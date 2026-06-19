@@ -45,18 +45,22 @@ CLINICAL_INFO = {
 import os
 import urllib.request
 
-# 2. CACHE THE MODEL & DOWNLOAD IF NOT PRESENT
-MODEL_FILENAME = "retiscan_pro_v4_best.keras"
+# 2. CLOUD MODEL STORAGE STRATEGY (BYPASS 100MB GITHUB & GOOGLE SCAN LIMITS)
+import gdown
 
-# 🎯 PASTE YOUR DIRECT DOWNLOAD URL HERE
-GOOGLE_DRIVE_DIRECT_URL = "https://docs.google.com/uc?export=download&id=1NFcXDWOMIVyVbA9j2pXUR6b8kCYGVKyq"
+MODEL_FILENAME = "retiscan_pro_v4_best.keras"
+FILE_ID = "1NFcXDWOMIVyVbA9j2pXUR6b8kCYGVKyq"
+
 @st.cache_resource
 def load_retiscan_model():
-    # If the model isn't already downloaded to the hosting server, fetch it
     if not os.path.exists(MODEL_FILENAME):
-        with st.spinner("Downloading trained model weights from secure cloud storage (this may take a moment on first boot)..."):
-            urllib.request.urlretrieve(GOOGLE_DRIVE_DIRECT_URL, MODEL_FILENAME)
+        with st.spinner("Downloading trained model weights from secure cloud storage (this may take a minute on initial boot)..."):
+            # gdown safely bypasses the large-file virus warning screens automatically
+            gdown.download(id=FILE_ID, output=MODEL_FILENAME, quiet=False)
             
+    if not os.path.exists(MODEL_FILENAME) or os.path.getsize(MODEL_FILENAME) < 1000000:
+        raise FileNotFoundError("The model file downloaded is corrupted or empty. Check Google Drive permissions.")
+        
     return tf.keras.models.load_model(MODEL_FILENAME)
 
 try:
