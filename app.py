@@ -42,16 +42,29 @@ CLINICAL_INFO = {
     "Proliferative DR": "Proliferative DR — new abnormal blood vessels (neovascularisation) have grown on the retina or optic disc. Vitreous/pre-retinal haemorrhage may be present."
 }
 
-# 2. CACHE THE MODEL SO IT LOADS ONCE AND STAYS FAST
+import os
+import urllib.request
+
+# 2. CACHE THE MODEL & DOWNLOAD IF NOT PRESENT
+MODEL_FILENAME = "retiscan_pro_v4_best.keras"
+
+# 🎯 PASTE YOUR DIRECT DOWNLOAD URL HERE
+GOOGLE_DRIVE_DIRECT_URL = "https://docs.google.com/uc?export=download&id=1NFcXDWOMIVyVbA9j2pXUR6b8kCYGVKyq"
+
 @st.cache_resource
 def load_retiscan_model():
-    return tf.keras.models.load_model("retiscan_pro_v4_best.keras")
+    # If the model isn't already downloaded to the hosting server, fetch it
+    if not os.path.exists(MODEL_FILENAME):
+        with st.spinner("Downloading trained model weights from secure cloud storage (this may take a moment on first boot)..."):
+            urllib.request.urlretrieve(GOOGLE_DRIVE_DIRECT_URL, MODEL_FILENAME)
+            
+    return tf.keras.models.load_model(MODEL_FILENAME)
 
 try:
     model = load_retiscan_model()
     model_loaded = True
 except Exception as e:
-    st.error(f"Could not load the model file. Please ensure 'retiscan_pro_v4_best.keras' is uploaded to the repository root. Error: {e}")
+    st.error(f"Could not initialize or download the model file. Error details: {e}")
     model_loaded = False
 
 # 3. INTERACTIVE WEB USER INTERFACE Layout
