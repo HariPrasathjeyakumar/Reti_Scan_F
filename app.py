@@ -6,7 +6,7 @@ import cv2
 # Set page configurations
 st.set_page_config(page_title="RetiScan Pro v4", layout="wide", initial_sidebar_state="collapsed")
 
-# 1. CONSTANTS & METADATA CONFIGURATIONS FROM RETI85% CODE
+# 1. CONSTANTS & METADATA CONFIGURATIONS MATCHING RETI85% CODE
 IMG_SIZE = 224
 NUM_CLASSES = 5
 
@@ -42,10 +42,9 @@ CLINICAL_INFO = {
     "Proliferative DR": "Proliferative DR — new abnormal blood vessels (neovascularisation) have grown on the retina or optic disc. Vitreous/pre-retinal haemorrhage may be present."
 }
 
-# 2. CACHE MODEL TO SPEED UP LOADING TIMES
+# 2. CACHE THE MODEL SO IT LOADS ONCE AND STAYS FAST
 @st.cache_resource
 def load_retiscan_model():
-    # Looks for your file in the same repository directory
     return tf.keras.models.load_model("retiscan_pro_v4_best.keras")
 
 try:
@@ -55,25 +54,25 @@ except Exception as e:
     st.error(f"Could not load the model file. Please ensure 'retiscan_pro_v4_best.keras' is uploaded to the repository root. Error: {e}")
     model_loaded = False
 
-# 3. GRAPHICAL USER INTERFACE
-st.markdown("<h1 style='text-align: center; color: #34d399;'>🔬 RetiScan Pro v4</h1>", unsafe_allow_html=True)
-st.markdown("<h3 style='text-align: center; color: #94a3b8; font-weight: normal; margin-bottom: 30px;'>Diabetic Retinopathy Diagnostic System</h3>", unsafe_allow_html=True)
+# 3. INTERACTIVE WEB USER INTERFACE Layout
+st.markdown("<h1 style='text-align: center; color: #34d399; font-family: sans-serif;'>🔬 RetiScan Pro v4</h1>", unsafe_allow_html=True)
+st.markdown("<h3 style='text-align: center; color: #94a3b8; font-weight: normal; margin-bottom: 30px; font-family: sans-serif;'>Diabetic Retinopathy Diagnostic System</h3>", unsafe_allow_html=True)
 
 if model_loaded:
     uploaded_file = st.file_uploader("Upload Retinal Fundus Photograph (JPG, JPEG, PNG)", type=["jpg", "jpeg", "png"])
 
     if uploaded_file is not None:
-        # Convert file buffer to an openCV image format
+        # Convert file buffer directly into an OpenCV image array
         file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
         img_bgr = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
         
-        # 🎯 FIX: MATCH CORRECT INFERENCE SCALE (0.0 to 255.0 floats) [cite: 33]
+        # 🎯 PIPELINE ALIGNMENT MATCHING COLA_B PIPELINE
         img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
         img_resized = cv2.resize(img_rgb, (IMG_SIZE, IMG_SIZE))
         img_tensor = tf.convert_to_tensor(img_resized, dtype=tf.float32)
         img_batch = tf.expand_dims(img_tensor, axis=0)
 
-        # Run model evaluation
+        # Run fast production prediction
         with st.spinner("Analyzing Retinal Scan Matrix..."):
             probabilities = model.predict(img_batch, verbose=0)[0]
         
@@ -82,31 +81,33 @@ if model_loaded:
         confidence = probabilities[pred_idx] * 100
         accent_color = SEVERITY_COLOR[pred_name]
 
-        # Structure Application Display Columns
-        col1, col2, col3 = st.columns([1, 1.2, 1.2], gap="large")
+        # Present the 3-Column Diagnostic Dashboard Split
+        col1, col2, col3 = st.columns([1.2, 1.3, 1.5], gap="large")
 
         with col1:
-            st.markdown(f"<div style='border: 3px solid {accent_color}; border-radius: 10px; overflow: hidden;'><img src='data:image/jpeg;base64,{cv2.imencode('.jpg', img_bgr)[1].tobytes().hex()}' style='width:100%; display:block;'/></div>", unsafe_allow_html=True)
-            # Alternate simple streamlit image display fall-back option if hex-render fails:
-            st.image(img_rgb, use_container_width=True, caption=uploaded_file.name)
+            # Bulletproof image component rendering
+            st.image(img_rgb, use_container_width=True, caption=f"Scan: {uploaded_file.name}")
 
         with col2:
-            st.markdown(f"<span style='color: #94a3b8; font-size: 12px; text-transform: uppercase;'>Diagnosis</span>", unsafe_allow_html=True)
-            st.markdown(f"<h2 style='color: {accent_color}; margin-top: 0px; font-weight: 800;'>{pred_name}</h2>", unsafe_allow_html=True)
-            st.markdown(f"**Confidence Matrix Rating:** `{confidence:.2f}%`", unsafe_allow_html=True)
+            st.markdown(f"<span style='color: #94a3b8; font-size: 11px; text-transform: uppercase; letter-spacing: 1px;'>Diagnosis</span>", unsafe_allow_html=True)
+            st.markdown(f"<h2 style='color: {accent_color}; margin-top: 0px; font-weight: 800; font-family: sans-serif;'>{pred_name}</h2>", unsafe_allow_html=True)
+            st.markdown(f"**Confidence Rating:** `{confidence:.2f}%`")
             st.markdown(f"<p style='color: #cbd5e1; font-size: 14px; line-height: 1.6; margin-top: 15px;'>{CLINICAL_INFO[pred_name]}</p>", unsafe_allow_html=True)
 
         with col3:
-            st.markdown(f"<span style='color: #94a3b8; font-size: 12px; text-transform: uppercase;'>Grade Probabilities</span>", unsafe_allow_html=True)
+            st.markdown(f"<span style='color: #94a3b8; font-size: 11px; text-transform: uppercase; letter-spacing: 1px;'>Grade Probabilities</span>", unsafe_allow_html=True)
+            st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
             for i in range(NUM_CLASSES):
                 cname = CLASS_NAMES[i]
-                pct = probabilities[i]
-                st.text(f"{cname} ({pct*100:.1f}%)")
-                st.progress(float(pct))
+                pct = float(probabilities[i])
+                
+                # Render clean progress metrics for each class
+                st.markdown(f"<div style='font-size: 13px; color: #cbd5e1; display: flex; justify-content: space-between;'><span>{cname}</span><span>{pct*100:.1f}%</span></div>", unsafe_allow_html=True)
+                st.progress(pct)
 
-        # Bottom Management Block
+        # Bottom Structural Treatment & Advisory Guideline Box
         st.markdown("<br>", unsafe_allow_html=True)
-        st.info(f"📋 **Clinical Management Directive for {pred_name}:**\n\n{MANAGEMENT[pred_name]}")
+        st.info(f"📋 **Clinical Management Directive:**\n\n{MANAGEMENT[pred_name]}")
         
         st.markdown("<hr style='border-color: #334155;'>", unsafe_allow_html=True)
         st.markdown("<p style='color: #64748b; font-size: 11px; text-align: center;'>⚠️ This tool is intended for research and screening assistance only. All diagnoses must be confirmed by a qualified ophthalmologist.</p>", unsafe_allow_html=True)
