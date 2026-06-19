@@ -50,7 +50,6 @@ MODEL_FILENAME = "retiscan_pro_v4_best.keras"
 
 # 🎯 PASTE YOUR DIRECT DOWNLOAD URL HERE
 GOOGLE_DRIVE_DIRECT_URL = "https://docs.google.com/uc?export=download&id=1NFcXDWOMIVyVbA9j2pXUR6b8kCYGVKyq"
-
 @st.cache_resource
 def load_retiscan_model():
     # If the model isn't already downloaded to the hosting server, fetch it
