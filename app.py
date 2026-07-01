@@ -14,7 +14,7 @@ st.set_page_config(page_title="RetiScan Pro v5", layout="wide", initial_sidebar_
 IMG_SIZE = 224
 NUM_CLASSES = 5
 MODEL_FILENAME = "retiscan_pro_v5_best.keras"
-FILE_ID = "1NFcXDWOMIVyVbA9j2pXUR6b8kCYGVKyq"
+FILE_ID = "1BrmHzARxRFTBilmymFkwn6e5ZjPmosu1"
 
 CLASS_NAMES = {
     0: "No DR",
