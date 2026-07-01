@@ -14,7 +14,7 @@ st.set_page_config(page_title="RetiScan Pro v5", layout="wide", initial_sidebar_
 IMG_SIZE = 224
 NUM_CLASSES = 5
 MODEL_FILENAME = "retiscan_pro_v5_best.keras"
-FILE_ID = "1BrmHzARxRFTBilmymFkwn6e5ZjPmosu1"  # Uses your model storage target
+FILE_ID = "1BrmHzARxRFTBilmymFkwn6e5ZjPmosu1"
 
 CLASS_NAMES = {
     0: "No DR",
@@ -48,7 +48,6 @@ CLINICAL_DIRECTIVES = {
     4: "CRITICAL ALERT: Emergency vitreo-retinal surgical evaluation indicated. High immediate risk of permanent tractional detachment."
 }
 
-# Custom loss wrapper needed for decoding functional network graph safely
 def focal_loss():
     def loss_fn(y_true, y_pred): return tf.reduce_mean(y_pred)
     loss_fn.__name__ = "focal_loss"
@@ -68,7 +67,6 @@ def load_retiscan_pipeline():
         
     main_model = tf.keras.models.load_model(MODEL_FILENAME, custom_objects={"focal_loss": focal_loss()})
     
-    # Locate final deep feature map block
     conv_layer_name = None
     for layer in reversed(main_model.layers):
         if isinstance(layer, tf.keras.layers.Conv2D) or 'top_conv' in layer.name or 'block7' in layer.name:
@@ -88,7 +86,7 @@ except Exception as e:
     model_loaded = False
 
 # =====================================================================
-#  3. PROCEDURAL PREPROCESSING & INTERACTIVE ADVANCED XAI MASKING
+#  3. PROCESSING ENGINE & GLARE-FREE REGION SEGMENTATION (ROI)
 # =====================================================================
 def preprocess_for_inference(img_bgr):
     rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
@@ -96,7 +94,7 @@ def preprocess_for_inference(img_bgr):
     tensor = rgb.astype(np.float32)
     return np.expand_dims(tensor, axis=0)
 
-def compute_glare_rejected_heatmap(img_tensor, grad_model, pred_idx, img_bgr):
+def compute_diagnostic_graphs(img_tensor, grad_model, pred_idx, img_bgr):
     h, w, _ = img_bgr.shape
     
     with tf.GradientTape() as tape:
@@ -114,11 +112,10 @@ def compute_glare_rejected_heatmap(img_tensor, grad_model, pred_idx, img_bgr):
     if max_val == 0: max_val = 1e-8
     raw_heatmap = (heatmap / max_val).numpy()
     
-    # Convert and resize
     heatmap_uint8 = np.uint8(255 * raw_heatmap)
     heatmap_resized = cv2.resize(heatmap_uint8, (w, h))
     
-    # Adaptive Geometric Guardrail: Detect eye bounds and clear outer lens reflections
+    # Run circle masking guardrails
     gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
     _, thresh = cv2.threshold(gray, 15, 255, cv2.THRESH_BINARY)
     contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -126,8 +123,6 @@ def compute_glare_rejected_heatmap(img_tensor, grad_model, pred_idx, img_bgr):
     if contours:
         largest_contour = max(contours, key=cv2.contourArea)
         (x_center, y_center), radius = cv2.minEnclosingCircle(largest_contour)
-        
-        # 80% Safe Area Extraction
         perfect_circle_mask = np.zeros((h, w), dtype=np.uint8)
         safe_radius = int(radius * 0.80)
         cv2.circle(perfect_circle_mask, (int(x_center), int(y_center)), safe_radius, 255, -1)
@@ -136,7 +131,32 @@ def compute_glare_rejected_heatmap(img_tensor, grad_model, pred_idx, img_bgr):
         x_center, y_center = w // 2, h // 2
         isolated_heatmap = heatmap_resized
         
-    # Spatial quadrant division for tracking analytics
+    # Generate the 3rd Marking Graph: Bounding Box Contours (ROI)
+    max_internal_val = np.max(isolated_heatmap)
+    if max_internal_val == 0: max_internal_val = 1
+    
+    _, binary_mask = cv2.threshold(isolated_heatmap, int(0.55 * max_internal_val), 255, cv2.THRESH_BINARY)
+    lesion_contours, _ = cv2.findContours(binary_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    
+    boundary_img_bgr = img_bgr.copy()
+    mask_overlay = np.zeros_like(img_bgr)
+    total_anomaly_pixels = 0
+    
+    for contour in lesion_contours:
+        area = cv2.contourArea(contour)
+        if area > 25:
+            total_anomaly_pixels += area
+            cv2.drawContours(mask_overlay, [contour], -1, (255, 255, 0), -1)
+            cv2.drawContours(boundary_img_bgr, [contour], -1, (255, 255, 0), 1)
+            x, y, box_w, box_h = cv2.boundingRect(contour)
+            cv2.rectangle(boundary_img_bgr, (x, y), (x + box_w, y + box_h), (0, 255, 255), 2)
+            cv2.putText(boundary_img_bgr, f"ROI: [{x},{y}]", (x, max(y - 8, 20)), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 2)
+            
+    cv2.addWeighted(mask_overlay, 0.25, boundary_img_bgr, 0.75, 0, dst=boundary_img_bgr)
+    stress_pct = (total_anomaly_pixels / (h * w)) * 100
+    
+    # Compute quadrant distribution stats
     quad_y, quad_x = int(y_center), int(x_center)
     quadrants = {
         "Upper-Left":  isolated_heatmap[0:quad_y, 0:quad_x],
@@ -144,28 +164,25 @@ def compute_glare_rejected_heatmap(img_tensor, grad_model, pred_idx, img_bgr):
         "Lower-Left":  isolated_heatmap[quad_y:h, 0:quad_x],
         "Lower-Right": isolated_heatmap[quad_y:h, quad_x:w]
     }
-    
     quad_sums = {k: np.sum(v) for k, v in quadrants.items()}
     total_sum = np.sum(list(quad_sums.values()))
-    dominant_quadrant = max(quad_sums, key=quad_sums.get) if total_sum > 0 else "Central Retinal"
+    dominant_quadrant = max(quad_sums, key=quad_sums.get) if total_sum > 0 else "Central"
     quadrant_focus_pct = (quad_sums[dominant_quadrant] / total_sum * 100) if total_sum > 0 else 0.0
     
-    return isolated_heatmap, dominant_quadrant, quadrant_focus_pct
+    return isolated_heatmap, boundary_img_bgr, stress_pct, dominant_quadrant, quadrant_focus_pct
 
 # =====================================================================
 #  4. USER INTERFACE GRAPHICS RENDERING CANVAS
 # =====================================================================
-st.markdown("<h2 style='text-align: center; color: #34d399; font-weight:700;'>🔬 RetiScan Pro v5</h2>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: center; color: #94a3b8; margin-bottom: 25px;'>Clinical Grade Diagnostic Framework & Explainable AI Engine</p>", unsafe_allow_html=True)
+st.markdown("<h2 style='text-align: center; color: #34d399; font-weight:700;'>🔬 RetiScan Pro v5 Dashboard</h2>", unsafe_allow_html=True)
 
-# Custom global card style sheet injector
 st.markdown("""
 <style>
     div[data-testid="stColumn"] {
         background: #161b22 !important;
         border: 1px solid #30363d !important;
         border-radius: 12px;
-        padding: 20px !important;
+        padding: 15px !important;
     }
     .stProgress > div > div > div > div {
         background-color: #ff9800 !important;
@@ -174,53 +191,61 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 if model_loaded:
-    uploaded_file = st.file_uploader("Injest Retinal Photographic Record Asset", type=["jpg", "jpeg", "png"])
+    uploaded_file = st.file_uploader("Upload Retinal Record Asset", type=["jpg", "jpeg", "png"])
     
     if uploaded_file is not None:
         file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
         img_bgr = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
         
-        # Matrix Ingestion & Verification Pass
         img_tensor = preprocess_for_inference(img_bgr)
         
-        with st.spinner("Executing Graph Pipeline..."):
+        with st.spinner("Processing Imaging Analytics..."):
             probabilities = model.predict_on_batch(img_tensor)[0]
             
         pred_idx = int(np.argmax(probabilities))
-        pred_name = CLASS_NAMES[pred_idx].split(' (')[0]
+        pred_name = CLASS_NAMES[pred_idx]
         confidence = probabilities[pred_idx] * 100
-        accent_color = SEVERITY_COLOR[CLASS_NAMES[pred_idx]]
+        accent_color = SEVERITY_COLOR[pred_name]
         
-        # Run XAI Glare Elimination Calculations
-        isolated_heatmap, dominant_quad, quad_pct = compute_glare_rejected_heatmap(img_tensor, grad_model, pred_idx, img_bgr)
+        # Calculate standard maps alongside the missing 3rd Boundary Map
+        isolated_heatmap, boundary_img, pathology_area, dominant_quad, quad_pct = compute_diagnostic_graphs(img_tensor, grad_model, pred_idx, img_bgr)
         
-        # Color Map Blending Operations
         heatmap_color = cv2.applyColorMap(isolated_heatmap, cv2.COLORMAP_JET)
         gradcam_blend = cv2.addWeighted(heatmap_color, 0.38, img_bgr, 0.62, 0)
         
-        img_display_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
-        gradcam_display_rgb = cv2.cvtColor(gradcam_blend, cv2.COLOR_BGR2RGB)
+        img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
+        gradcam_rgb = cv2.cvtColor(gradcam_blend, cv2.COLOR_BGR2RGB)
+        boundary_rgb = cv2.cvtColor(boundary_img, cv2.COLOR_BGR2RGB)
         
-        # --- UI Row 1: The 4-Column Grid Layout ---
-        col1, col2, col3, col4 = st.columns([1.2, 1.2, 1.5, 1.3], gap="medium")
+        # === ROW 1: THE THREE VISUAL IMAGING GRAPHS (RESTORED COMPLETE) ===
+        st.markdown("<h4 style='color: #8b949e; font-size:13px; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;'>Visual Diagnostic Trackers</h4>", unsafe_allow_html=True)
+        img_col1, img_col2, img_col3 = st.columns(3, gap="medium")
         
-        with col1:
-            st.markdown("<span style='color: #8b949e; font-size: 11px; text-transform: uppercase; letter-spacing: 1.5px; font-weight:600;'>Base Input</span>", unsafe_allow_html=True)
-            st.image(img_display_rgb, use_container_width=True)
+        with img_col1:
+            st.markdown("<span style='color: #8b949e; font-size: 11px; text-transform: uppercase; font-weight:600;'>I. Base Input</span>", unsafe_allow_html=True)
+            st.image(img_rgb, use_container_width=True)
             
-        with col2:
-            st.markdown("<span style='color: #8b949e; font-size: 11px; text-transform: uppercase; letter-spacing: 1.5px; font-weight:600;'>Grad Cam Map</span>", unsafe_allow_html=True)
-            st.image(gradcam_display_rgb, use_container_width=True)
+        with img_col2:
+            st.markdown("<span style='color: #8b949e; font-size: 11px; text-transform: uppercase; font-weight:600;'>II. Grad-CAM Map</span>", unsafe_allow_html=True)
+            st.image(gradcam_rgb, use_container_width=True)
             
-        with col3:
-            st.markdown("<span style='color: #8b949e; font-size: 11px; text-transform: uppercase; letter-spacing: 1.5px; font-weight:600;'>Diagnosis</span>", unsafe_allow_html=True)
-            st.markdown(f"<div style='font-size: 28px; font-weight: 700; color: {accent_color}; margin-top:5px;'>{pred_name}</div>", unsafe_allow_html=True)
-            st.markdown(f"<div style='font-size: 13px; color: #8b949e; margin-bottom:12px;'>Confidence: {confidence:.1f}%</div>", unsafe_allow_html=True)
-            st.markdown(f"<div style='font-size: 13.5px; line-height:1.5; color:#c9d1d9;'>{CLASS_DESCRIPTIONS[pred_idx]}</div>", unsafe_allow_html=True)
+        with img_col3:
+            st.markdown(f"<span style='color: #00FFFF; font-size: 11px; text-transform: uppercase; font-weight:600;'>III. Automated Lesion Boundary ({pathology_area:.2f}%)</span>", unsafe_allow_html=True)
+            st.image(boundary_rgb, use_container_width=True)
             
-        with col4:
-            st.markdown("<span style='color: #8b949e; font-size: 11px; text-transform: uppercase; letter-spacing: 1.5px; font-weight:600;'>Grade Probabilities</span>", unsafe_allow_html=True)
-            st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
+        # === ROW 2: CLINICAL QUANTIFICATION AND PROGRESS METRICS ===
+        st.markdown("<br><h4 style='color: #8b949e; font-size:13px; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;'>Classification & Metrics Summary</h4>", unsafe_allow_html=True)
+        data_col1, data_col2 = st.columns([1, 1], gap="medium")
+        
+        with data_col1:
+            st.markdown("<span style='color: #8b949e; font-size: 11px; text-transform: uppercase; font-weight:600;'>Diagnostic Verdict</span>", unsafe_allow_html=True)
+            st.markdown(f"<div style='font-size: 32px; font-weight: 700; color: {accent_color}; margin-top:5px;'>{pred_name}</div>", unsafe_allow_html=True)
+            st.markdown(f"<div style='font-size: 14px; color: #8b949e; margin-bottom:12px;'>Confidence: {confidence:.2f}% | Pathological Footprint: {pathology_area:.2f}%</div>", unsafe_allow_html=True)
+            st.markdown(f"<div style='font-size: 14px; line-height:1.5; color:#c9d1d9;'>{CLASS_DESCRIPTIONS[pred_idx]}</div>", unsafe_allow_html=True)
+            
+        with data_col2:
+            st.markdown("<span style='color: #8b949e; font-size: 11px; text-transform: uppercase; font-weight:600;'>Grade Probabilities Matrix</span>", unsafe_allow_html=True)
+            st.markdown("<div style='margin-top: 5px;'></div>", unsafe_allow_html=True)
             for i in range(NUM_CLASSES):
                 cname = CLASS_NAMES[i]
                 pct = float(probabilities[i])
@@ -230,12 +255,12 @@ if model_loaded:
                 st.markdown(f"<div style='font-size: 12px; color: {label_color}; display: flex; justify-content: space-between; font-weight:500; margin-bottom:2px;'><span>{cname}</span><span>{pct*100:.1f}%</span></div>", unsafe_allow_html=True)
                 st.progress(pct)
 
-        # --- UI Row 2: Dynamic XAI Banner Block ---
+        # === ROW 3: BANNERS ===
         st.markdown("<br>", unsafe_allow_html=True)
         if pred_idx == 0:
-            xai_text = "The internal neural activations are uniform and clean. No statistically significant pixel structural variations were flagged across the central retinal layout, indicating a stable vascular network structure."
+            xai_text = "The internal neural activations are uniform and clean. No statistically significant anomalous pixel groupings were identified, indicating a stable vascular layer context."
         else:
-            xai_text = f"The structural prediction tracking matrix is primarily driven by concentrated pathology vectors localized within the <strong>{dominant_quad} quadrant</strong> (accounting for {quad_pct:.1f}% of overall visual layer network activation). Neural focus clustered structural anomalies explicitly within this regional spatial sector."
+            xai_text = f"The structural prediction tracking matrix is primarily driven by concentrated pathology vectors localized within the <strong>{dominant_quad} quadrant</strong> (accounting for {quad_pct:.1f}% of overall visual network attention maps). Neural tracking isolated distinct anomalies within this sector."
 
         st.markdown(f"""
         <div style="background: #1f152d; border: 1px solid #4c297a; border-radius: 12px; padding: 18px; display: flex; gap: 14px; margin-bottom:15px;">
@@ -247,7 +272,6 @@ if model_loaded:
         </div>
         """, unsafe_allow_html=True)
         
-        # --- UI Row 3: Actionable Medical Directive Banner ---
         st.markdown(f"""
         <div style="background: #1b1c16; border: 1px solid #4d4617; border-radius: 12px; padding: 18px; display: flex; gap: 14px;">
             <div style="font-size: 22px; margin-top:-2px;">📋</div>
@@ -257,6 +281,3 @@ if model_loaded:
             </div>
         </div>
         """, unsafe_allow_html=True)
-        
-        st.markdown("<hr style='border-color: #21262d;'>", unsafe_allow_html=True)
-        st.markdown("<p style='color: #64748b; font-size: 11px; text-align: center;'>⚠️ Research framework support only. Mandatory ophthalmologist tracking validation required.</p>", unsafe_allow_html=True)
