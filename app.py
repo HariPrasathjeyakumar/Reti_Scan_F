@@ -14,7 +14,7 @@ st.set_page_config(page_title="RetiScan Pro v5", layout="wide", initial_sidebar_
 IMG_SIZE = 224
 NUM_CLASSES = 5
 MODEL_FILENAME = "retiscan_pro_v5_best.keras"
-FILE_ID = "1BrmHzARxRFTBilmymFkwn6e5ZjPmosu1"
+FILE_ID = "1NFcXDWOMIVyVbA9j2pXUR6b8kCYGVKyq"
 
 CLASS_NAMES = {
     0: "No DR",
@@ -94,7 +94,38 @@ def preprocess_for_inference(img_bgr):
     tensor = rgb.astype(np.float32)
     return np.expand_dims(tensor, axis=0)
 
-def compute_diagnostic_graphs(img_tensor, grad_model, pred_idx, img_bgr):
+def run_pre_computing_screening(img_bgr):
+    """
+    Executes raw data matrix filtering before exposing files to neural nodes.
+    Checks structural circle area constraints and mean pixel luminance.
+    """
+    h, w, _ = img_bgr.shape
+    gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
+    
+    # Check 1: Exposure Test
+    mean_brightness = np.mean(gray)
+    if mean_brightness < 10:
+        return False, "REJECTED: Low asset luminance exposure (Image too dark).", None, None, None
+        
+    # Check 2: Geometry Structural Test
+    _, thresh = cv2.threshold(gray, 15, 255, cv2.THRESH_BINARY)
+    contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    
+    if not contours:
+        return False, "REJECTED: Geometry unverified. No structural contour field found.", None, None, None
+        
+    largest_contour = max(contours, key=cv2.contourArea)
+    contour_area = cv2.contourArea(largest_contour)
+    total_area = h * w
+    
+    # Eye canvas must cover at least 15% of the file stream area
+    if contour_area < (total_area * 0.15):
+        return False, "REJECTED: Geometry unverified. Extracted fundus structure area is too small.", None, None, None
+        
+    (x_center, y_center), radius = cv2.minEnclosingCircle(largest_contour)
+    return True, "PASSED", x_center, y_center, radius
+
+def compute_diagnostic_graphs(img_tensor, grad_model, pred_idx, img_bgr, x_center, y_center, radius):
     h, w, _ = img_bgr.shape
     
     with tf.GradientTape() as tape:
@@ -115,21 +146,11 @@ def compute_diagnostic_graphs(img_tensor, grad_model, pred_idx, img_bgr):
     heatmap_uint8 = np.uint8(255 * raw_heatmap)
     heatmap_resized = cv2.resize(heatmap_uint8, (w, h))
     
-    # Run circle masking guardrails
-    gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
-    _, thresh = cv2.threshold(gray, 15, 255, cv2.THRESH_BINARY)
-    contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    
-    if contours:
-        largest_contour = max(contours, key=cv2.contourArea)
-        (x_center, y_center), radius = cv2.minEnclosingCircle(largest_contour)
-        perfect_circle_mask = np.zeros((h, w), dtype=np.uint8)
-        safe_radius = int(radius * 0.80)
-        cv2.circle(perfect_circle_mask, (int(x_center), int(y_center)), safe_radius, 255, -1)
-        isolated_heatmap = cv2.bitwise_and(heatmap_resized, perfect_circle_mask)
-    else:
-        x_center, y_center = w // 2, h // 2
-        isolated_heatmap = heatmap_resized
+    # 80% Safe Circle Inner Radius Area Cutoff
+    perfect_circle_mask = np.zeros((h, w), dtype=np.uint8)
+    safe_radius = int(radius * 0.80)
+    cv2.circle(perfect_circle_mask, (int(x_center), int(y_center)), safe_radius, 255, -1)
+    isolated_heatmap = cv2.bitwise_and(heatmap_resized, perfect_circle_mask)
         
     # Generate the 3rd Marking Graph: Bounding Box Contours (ROI)
     max_internal_val = np.max(isolated_heatmap)
@@ -156,7 +177,7 @@ def compute_diagnostic_graphs(img_tensor, grad_model, pred_idx, img_bgr):
     cv2.addWeighted(mask_overlay, 0.25, boundary_img_bgr, 0.75, 0, dst=boundary_img_bgr)
     stress_pct = (total_anomaly_pixels / (h * w)) * 100
     
-    # Compute quadrant distribution stats
+    # Compute quadrant distribution statistics
     quad_y, quad_x = int(y_center), int(x_center)
     quadrants = {
         "Upper-Left":  isolated_heatmap[0:quad_y, 0:quad_x],
@@ -197,87 +218,101 @@ if model_loaded:
         file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
         img_bgr = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
         
-        img_tensor = preprocess_for_inference(img_bgr)
+        # --- EXECUTE PRE-COMPUTING SCREENING FILTER ---
+        passed_screening, message, x_center, y_center, radius = run_pre_computing_screening(img_bgr)
         
-        with st.spinner("Processing Imaging Analytics..."):
-            probabilities = model.predict_on_batch(img_tensor)[0]
-            
-        pred_idx = int(np.argmax(probabilities))
-        pred_name = CLASS_NAMES[pred_idx]
-        confidence = probabilities[pred_idx] * 100
-        accent_color = SEVERITY_COLOR[pred_name]
-        
-        # Calculate standard maps alongside the missing 3rd Boundary Map
-        isolated_heatmap, boundary_img, pathology_area, dominant_quad, quad_pct = compute_diagnostic_graphs(img_tensor, grad_model, pred_idx, img_bgr)
-        
-        heatmap_color = cv2.applyColorMap(isolated_heatmap, cv2.COLORMAP_JET)
-        gradcam_blend = cv2.addWeighted(heatmap_color, 0.38, img_bgr, 0.62, 0)
-        
-        img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
-        gradcam_rgb = cv2.cvtColor(gradcam_blend, cv2.COLOR_BGR2RGB)
-        boundary_rgb = cv2.cvtColor(boundary_img, cv2.COLOR_BGR2RGB)
-        
-        # === ROW 1: THE THREE VISUAL IMAGING GRAPHS (RESTORED COMPLETE) ===
-        st.markdown("<h4 style='color: #8b949e; font-size:13px; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;'>Visual Diagnostic Trackers</h4>", unsafe_allow_html=True)
-        img_col1, img_col2, img_col3 = st.columns(3, gap="medium")
-        
-        with img_col1:
-            st.markdown("<span style='color: #8b949e; font-size: 11px; text-transform: uppercase; font-weight:600;'>I. Base Input</span>", unsafe_allow_html=True)
-            st.image(img_rgb, use_container_width=True)
-            
-        with img_col2:
-            st.markdown("<span style='color: #8b949e; font-size: 11px; text-transform: uppercase; font-weight:600;'>II. Grad-CAM Map</span>", unsafe_allow_html=True)
-            st.image(gradcam_rgb, use_container_width=True)
-            
-        with img_col3:
-            st.markdown(f"<span style='color: #00FFFF; font-size: 11px; text-transform: uppercase; font-weight:600;'>III. Automated Lesion Boundary ({pathology_area:.2f}%)</span>", unsafe_allow_html=True)
-            st.image(boundary_rgb, use_container_width=True)
-            
-        # === ROW 2: CLINICAL QUANTIFICATION AND PROGRESS METRICS ===
-        st.markdown("<br><h4 style='color: #8b949e; font-size:13px; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;'>Classification & Metrics Summary</h4>", unsafe_allow_html=True)
-        data_col1, data_col2 = st.columns([1, 1], gap="medium")
-        
-        with data_col1:
-            st.markdown("<span style='color: #8b949e; font-size: 11px; text-transform: uppercase; font-weight:600;'>Diagnostic Verdict</span>", unsafe_allow_html=True)
-            st.markdown(f"<div style='font-size: 32px; font-weight: 700; color: {accent_color}; margin-top:5px;'>{pred_name}</div>", unsafe_allow_html=True)
-            st.markdown(f"<div style='font-size: 14px; color: #8b949e; margin-bottom:12px;'>Confidence: {confidence:.2f}% | Pathological Footprint: {pathology_area:.2f}%</div>", unsafe_allow_html=True)
-            st.markdown(f"<div style='font-size: 14px; line-height:1.5; color:#c9d1d9;'>{CLASS_DESCRIPTIONS[pred_idx]}</div>", unsafe_allow_html=True)
-            
-        with data_col2:
-            st.markdown("<span style='color: #8b949e; font-size: 11px; text-transform: uppercase; font-weight:600;'>Grade Probabilities Matrix</span>", unsafe_allow_html=True)
-            st.markdown("<div style='margin-top: 5px;'></div>", unsafe_allow_html=True)
-            for i in range(NUM_CLASSES):
-                cname = CLASS_NAMES[i]
-                pct = float(probabilities[i])
-                is_pred = (i == pred_idx)
-                
-                label_color = "#ffffff" if is_pred else "#8b949e"
-                st.markdown(f"<div style='font-size: 12px; color: {label_color}; display: flex; justify-content: space-between; font-weight:500; margin-bottom:2px;'><span>{cname}</span><span>{pct*100:.1f}%</span></div>", unsafe_allow_html=True)
-                st.progress(pct)
-
-        # === ROW 3: BANNERS ===
-        st.markdown("<br>", unsafe_allow_html=True)
-        if pred_idx == 0:
-            xai_text = "The internal neural activations are uniform and clean. No statistically significant anomalous pixel groupings were identified, indicating a stable vascular layer context."
+        if not passed_screening:
+            st.markdown(f"""
+            <div style='background:#7f1d1d; color:#fca5a5; padding:18px; border-radius:8px; font-weight:bold; border: 1px solid #f87171; margin-top:15px;'>
+                ❌ SYSTEM SCREENING REJECTION: {message}<br>
+                <span style='font-size:12px; font-weight:normal;'>Pipeline terminated automatically to prevent false model classification predictions on corrupted data configurations.</span>
+            </div>
+            """, unsafe_allow_html=True)
         else:
-            xai_text = f"The structural prediction tracking matrix is primarily driven by concentrated pathology vectors localized within the <strong>{dominant_quad} quadrant</strong> (accounting for {quad_pct:.1f}% of overall visual network attention maps). Neural tracking isolated distinct anomalies within this sector."
+            # Asset cleared metrics. Proceed safely to execution loops.
+            img_tensor = preprocess_for_inference(img_bgr)
+            
+            with st.spinner("Processing Imaging Analytics..."):
+                probabilities = model.predict_on_batch(img_tensor)[0]
+                
+            pred_idx = int(np.argmax(probabilities))
+            pred_name = CLASS_NAMES[pred_idx]
+            confidence = probabilities[pred_idx] * 100
+            accent_color = SEVERITY_COLOR[pred_name]
+            
+            # Compute processing maps including the 3rd Visual Graph
+            isolated_heatmap, boundary_img, pathology_area, dominant_quad, quad_pct = compute_diagnostic_graphs(
+                img_tensor, grad_model, pred_idx, img_bgr, x_center, y_center, radius
+            )
+            
+            heatmap_color = cv2.applyColorMap(isolated_heatmap, cv2.COLORMAP_JET)
+            gradcam_blend = cv2.addWeighted(heatmap_color, 0.38, img_bgr, 0.62, 0)
+            
+            img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
+            gradcam_rgb = cv2.cvtColor(gradcam_blend, cv2.COLOR_BGR2RGB)
+            boundary_rgb = cv2.cvtColor(boundary_img, cv2.COLOR_BGR2RGB)
+            
+            # === ROW 1: THE THREE VISUAL IMAGING GRAPHS (RESTORED WITH PRE-COMPUTING GUARANTEES) ===
+            st.markdown("<h4 style='color: #8b949e; font-size:13px; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;'>Visual Diagnostic Trackers</h4>", unsafe_allow_html=True)
+            img_col1, img_col2, img_col3 = st.columns(3, gap="medium")
+            
+            with img_col1:
+                st.markdown("<span style='color: #8b949e; font-size: 11px; text-transform: uppercase; font-weight:600;'>I. Base Input</span>", unsafe_allow_html=True)
+                st.image(img_rgb, use_container_width=True)
+                
+            with img_col2:
+                st.markdown("<span style='color: #8b949e; font-size: 11px; text-transform: uppercase; font-weight:600;'>II. Grad-CAM Map</span>", unsafe_allow_html=True)
+                st.image(gradcam_rgb, use_container_width=True)
+                
+            with img_col3:
+                st.markdown(f"<span style='color: #00FFFF; font-size: 11px; text-transform: uppercase; font-weight:600;'>III. Automated Lesion Boundary ({pathology_area:.2f}%)</span>", unsafe_allow_html=True)
+                st.image(boundary_rgb, use_container_width=True)
+                
+            # === ROW 2: CLINICAL QUANTIFICATION AND PROGRESS METRICS ===
+            st.markdown("<br><h4 style='color: #8b949e; font-size:13px; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;'>Classification & Metrics Summary</h4>", unsafe_allow_html=True)
+            data_col1, data_col2 = st.columns([1, 1], gap="medium")
+            
+            with data_col1:
+                st.markdown("<span style='color: #8b949e; font-size: 11px; text-transform: uppercase; font-weight:600;'>Diagnostic Verdict</span>", unsafe_allow_html=True)
+                st.markdown(f"<div style='font-size: 32px; font-weight: 700; color: {accent_color}; margin-top:5px;'>{pred_name}</div>", unsafe_allow_html=True)
+                st.markdown(f"<div style='font-size: 14px; color: #8b949e; margin-bottom:12px;'>Confidence: {confidence:.2f}% | Pathological Footprint: {pathology_area:.2f}%</div>", unsafe_allow_html=True)
+                st.markdown(f"<div style='font-size: 14px; line-height:1.5; color:#c9d1d9;'>{CLASS_DESCRIPTIONS[pred_idx]}</div>", unsafe_allow_html=True)
+                
+            with data_col2:
+                st.markdown("<span style='color: #8b949e; font-size: 11px; text-transform: uppercase; font-weight:600;'>Grade Probabilities Matrix</span>", unsafe_allow_html=True)
+                st.markdown("<div style='margin-top: 5px;'></div>", unsafe_allow_html=True)
+                for i in range(NUM_CLASSES):
+                    cname = CLASS_NAMES[i]
+                    pct = float(probabilities[i])
+                    is_pred = (i == pred_idx)
+                    
+                    label_color = "#ffffff" if is_pred else "#8b949e"
+                    st.markdown(f"<div style='font-size: 12px; color: {label_color}; display: flex; justify-content: space-between; font-weight:500; margin-bottom:2px;'><span>{cname}</span><span>{pct*100:.1f}%</span></div>", unsafe_allow_html=True)
+                    st.progress(pct)
 
-        st.markdown(f"""
-        <div style="background: #1f152d; border: 1px solid #4c297a; border-radius: 12px; padding: 18px; display: flex; gap: 14px; margin-bottom:15px;">
-            <div style="font-size: 22px; margin-top:-2px;">🧠</div>
-            <div>
-                <div style="font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #d6adff; font-weight: 600; margin-bottom: 4px;">Dynamic XAI Local Analysis</div>
-                <div style="font-size: 13.5px; line-height: 1.45; color: #e1cbff;"><strong>AI Decision Rationale:</strong> {xai_text}</div>
+            # === ROW 3: BANNERS ===
+            st.markdown("<br>", unsafe_allow_html=True)
+            if pred_idx == 0:
+                xai_text = "The internal neural activations are uniform and clean. No statistically significant anomalous pixel groupings were identified, indicating a stable vascular layer context."
+            else:
+                xai_text = f"The structural prediction tracking matrix is primarily driven by concentrated pathology vectors localized within the <strong>{dominant_quad} quadrant</strong> (accounting for {quad_pct:.1f}% of overall visual network attention maps). Neural tracking isolated distinct anomalies within this sector."
+
+            st.markdown(f"""
+            <div style="background: #1f152d; border: 1px solid #4c297a; border-radius: 12px; padding: 18px; display: flex; gap: 14px; margin-bottom:15px;">
+                <div style="font-size: 22px; margin-top:-2px;">🧠</div>
+                <div>
+                    <div style="font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #d6adff; font-weight: 600; margin-bottom: 4px;">Dynamic XAI Local Analysis</div>
+                    <div style="font-size: 13.5px; line-height: 1.45; color: #e1cbff;"><strong>AI Decision Rationale:</strong> {xai_text}</div>
+                </div>
             </div>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        st.markdown(f"""
-        <div style="background: #1b1c16; border: 1px solid #4d4617; border-radius: 12px; padding: 18px; display: flex; gap: 14px;">
-            <div style="font-size: 22px; margin-top:-2px;">📋</div>
-            <div>
-                <div style="font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #e2da9a; font-weight: 600; margin-bottom: 4px;">Clinical Management Directive</div>
-                <div style="font-size: 13.5px; line-height: 1.45; color: #f7f3d3;">{CLINICAL_DIRECTIVES[pred_idx]}</div>
+            """, unsafe_allow_html=True)
+            
+            st.markdown(f"""
+            <div style="background: #1b1c16; border: 1px solid #4d4617; border-radius: 12px; padding: 18px; display: flex; gap: 14px;">
+                <div style="font-size: 22px; margin-top:-2px;">📋</div>
+                <div>
+                    <div style="font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #e2da9a; font-weight: 600; margin-bottom: 4px;">Clinical Management Directive</div>
+                    <div style="font-size: 13.5px; line-height: 1.45; color: #f7f3d3;">{CLINICAL_DIRECTIVES[pred_idx]}</div>
+                </div>
             </div>
-        </div>
-        """, unsafe_allow_html=True)
+            """, unsafe_allow_html=True)
