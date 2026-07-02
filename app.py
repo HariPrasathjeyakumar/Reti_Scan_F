@@ -17,7 +17,7 @@ st.set_page_config(page_title="RetiScan Pro v5", layout="wide", initial_sidebar_
 IMG_SIZE = 224
 NUM_CLASSES = 5
 MODEL_FILENAME = "retiscan_pro_v5_best.keras"
-FILE_ID = "1ff4z4owNHy93j9kW-5oi1MKCESKebYJe"
+FILE_ID = "1NFcXDWOMIVyVbA9j2pXUR6b8kCYGVKyq"
 HISTORY_FILE = "patient_history.json"
 
 CLASS_NAMES = {
@@ -91,7 +91,9 @@ except Exception as e:
 
 def load_patient_history():
     if os.path.exists(HISTORY_FILE):
-        with open(HISTORY_FILE, "r") as f: return json.load(f)
+        try:
+            with open(HISTORY_FILE, "r") as f: return json.load(f)
+        except: return {}
     return {}
 
 def save_patient_record(p_id, diagnosis, confidence, attention_index):
@@ -166,9 +168,8 @@ def compute_diagnostic_graphs(img_tensor, grad_model, pred_idx, img_bgr, x_cente
     cv2.circle(perfect_circle_mask, (int(x_center), int(y_center)), safe_radius, 255, -1)
     isolated_heatmap = cv2.bitwise_and(heatmap_resized, perfect_circle_mask)
         
-    # --- APPROACH A CORE QUANTIFICATION & GATEKEEPER INTERACTION LOGIC ---
+    # --- APPROACH A QUANTIFICATION ---
     if pred_idx == 0:
-        # Enforce clinical validation overrule strategy
         ai_attention_index = 0.0
         boundary_img_bgr = img_bgr.copy()
     else:
@@ -198,7 +199,6 @@ def compute_diagnostic_graphs(img_tensor, grad_model, pred_idx, img_bgr, x_cente
                 
         cv2.addWeighted(mask_overlay, 0.25, boundary_img_bgr, 0.75, 0, dst=boundary_img_bgr)
     
-    # Compute quadrant distribution statistics
     quad_y, quad_x = int(y_center), int(x_center)
     quadrants = {
         "Upper-Left":  isolated_heatmap[0:quad_y, 0:quad_x],
@@ -232,10 +232,9 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# App Sidebar Controls
 st.sidebar.title("🩺 Clinical Control Hub")
 st.sidebar.markdown("---")
-patient_id = st.sidebar.text_input("👤 Patient ID Key", value="PATIENT-401").strip().upper()
+patient_id = st.sidebar.text_input("👤 Patient ID Key", value="PATIENT-601").strip().upper()
 
 if model_loaded:
     uploaded_file = st.sidebar.file_uploader("Upload Retinal Record Asset", type=["jpg", "jpeg", "png"])
@@ -244,7 +243,6 @@ if model_loaded:
         file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
         img_bgr = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
         
-        # --- EXECUTE PRE-COMPUTING SCREENING FILTER ---
         passed_screening, message, x_center, y_center, radius = run_pre_computing_screening(img_bgr)
         
         if not passed_screening:
@@ -265,12 +263,10 @@ if model_loaded:
             confidence = probabilities[pred_idx] * 100
             accent_color = SEVERITY_COLOR[pred_name]
             
-            # Compute processing maps using our upgraded metric formulas
             isolated_heatmap, boundary_img, attention_index, dominant_quad, quad_pct = compute_diagnostic_graphs(
                 img_tensor, grad_model, pred_idx, img_bgr, x_center, y_center, radius
             )
             
-            # Save telemetry arrays to historical tracking profile
             record_logs = save_patient_record(patient_id, pred_name, confidence, attention_index)
 
             heatmap_color = cv2.applyColorMap(isolated_heatmap, cv2.COLORMAP_JET)
@@ -280,7 +276,7 @@ if model_loaded:
             gradcam_rgb = cv2.cvtColor(gradcam_blend, cv2.COLOR_BGR2RGB)
             boundary_rgb = cv2.cvtColor(boundary_img, cv2.COLOR_BGR2RGB)
             
-            # === ROW 1: THE FOUR VISUAL IMAGING GRAPHS HORIZONTAL PANEL ===
+            # === ROW 1: IMAGING HORIZONTAL PANEL ===
             st.markdown("<h4 style='color: #8b949e; font-size:13px; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;'>Multi-Panel Diagnostic Worksheet Trackers</h4>", unsafe_allow_html=True)
             img_col1, img_col2, img_col3, img_col4 = st.columns(4, gap="medium")
             
@@ -312,8 +308,9 @@ if model_loaded:
                 ax.spines['left'].set_color('#8b949e')
                 ax.tick_params(colors='#8b949e', labelsize=8)
                 st.pyplot(fig)
+                plt.close(fig)
 
-            # === ROW 2: CLINICAL QUANTIFICATION AND PROGRESS METRICS ===
+            # === ROW 2: DIAGNOSTIC MATRIX SUMMARY ===
             st.markdown("<br><h4 style='color: #8b949e; font-size:13px; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;'>Classification & Metrics Summary</h4>", unsafe_allow_html=True)
             data_col1, data_col2 = st.columns([1, 1], gap="medium")
             
@@ -330,12 +327,11 @@ if model_loaded:
                     cname = CLASS_NAMES[i]
                     pct = float(probabilities[i])
                     is_pred = (i == pred_idx)
-                    
                     label_color = "#ffffff" if is_pred else "#8b949e"
                     st.markdown(f"<div style='font-size: 12px; color: {label_color}; display: flex; justify-content: space-between; font-weight:500; margin-bottom:2px;'><span>{cname}</span><span>{pct*100:.1f}%</span></div>", unsafe_allow_html=True)
                     st.progress(pct)
 
-            # === ROW 3: BANNERS EXPLAINING EXPLAINABLE AI OUTPUTS ===
+            # === ROW 3: EXPLAINABLE AI BANNERS ===
             st.markdown("<br>", unsafe_allow_html=True)
             if pred_idx == 0:
                 xai_text = "The internal neural activations are uniform and clean. No statistically significant anomalous pixel groupings were identified, indicating a stable vascular layer context."
@@ -362,12 +358,10 @@ if model_loaded:
             </div>
             """, unsafe_allow_html=True)
 
-            # === ROW 4: DATA PAYLOAD LOGGING TABLE (FIXED FOR CORRECT HTML RENDERING) ===
-            st.markdown("<br>", unsafe_allow_html=True)
+            # === ROW 4: DATA PAYLOAD LOGGING TABLE (UNIFIED TO PREVENT STRING ESCAPING) ===
             st.subheader(f"📋 Historical Tracking Summary Log ({patient_id})")
             
-            # Formulate full valid HTML string block
-            table_header = """
+            table_html = """
             <table style="width:100%; text-align:left; border-collapse:collapse; font-size:14px; background:#161b22; border:1px solid #30363d; border-radius:8px;">
                 <thead>
                     <tr style="border-bottom:2px solid #30363d; color:#8b949e; background:#0d1117;">
@@ -380,10 +374,8 @@ if model_loaded:
                 </thead>
                 <tbody>
             """
-            
-            table_body = ""
             for i, r in enumerate(record_logs):
-                table_body += f"""
+                table_html += f"""
                 <tr style="border-bottom:1px solid #30363d;">
                     <td style="padding:12px;"><b>#{i+1}</b></td>
                     <td style="padding:12px;">{r['timestamp']}</td>
@@ -392,13 +384,7 @@ if model_loaded:
                     <td style="padding:12px; color:#38bdf8;"><b>{r['attention_index']:.1f}%</b></td>
                 </tr>
                 """
-                
-            table_footer = "</tbody></table>"
-            
-            # Combine everything into one single cohesive string
-            final_html_payload = table_header + table_body + table_footer
-            
-            # Render directly using st.markdown
-            st.markdown(final_html_payload, unsafe_allow_html=True)
+            table_html += "</tbody></table>"
+            st.markdown(table_html, unsafe_allow_html=True)
     else:
         st.info("👋 Welcome! Please upload a retinal fundus photo inside the left sidebar panel to initialize the tracking dashboard timeline sequence workflows.")
