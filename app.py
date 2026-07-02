@@ -4,9 +4,12 @@ import numpy as np
 import cv2
 import os
 import gdown
+import json
+import matplotlib.pyplot as plt
+from datetime import datetime
 
 # Set page configurations to clean wide layout
-st.set_page_config(page_title="RetiScan Pro v5", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="RetiScan Pro v5", layout="wide", initial_sidebar_state="expanded")
 
 # =====================================================================
 #  1. CONSTANTS, CLOUD PATHS, & CORE METADATA
@@ -14,7 +17,8 @@ st.set_page_config(page_title="RetiScan Pro v5", layout="wide", initial_sidebar_
 IMG_SIZE = 224
 NUM_CLASSES = 5
 MODEL_FILENAME = "retiscan_pro_v5_best.keras"
-FILE_ID = "1NFcXDWOMIVyVbA9j2pXUR6b8kCYGVKyq"
+FILE_ID = "1ff4z4owNHy93j9kW-5oi1MKCESKebYJe"
+HISTORY_FILE = "patient_history.json"
 
 CLASS_NAMES = {
     0: "No DR",
@@ -54,7 +58,7 @@ def focal_loss():
     return loss_fn
 
 # =====================================================================
-#  2. CACHED MODEL ENGINE & HOOKED GRADIENT LAYER TOPOLOGY
+#  2. CACHED MODEL ENGINE & LONGITUDINAL DATABASE UTILITIES
 # =====================================================================
 @st.cache_resource
 def load_retiscan_pipeline():
@@ -85,6 +89,24 @@ except Exception as e:
     st.error(f"Could not initialize or download the model file. Error: {e}")
     model_loaded = False
 
+def load_patient_history():
+    if os.path.exists(HISTORY_FILE):
+        with open(HISTORY_FILE, "r") as f: return json.load(f)
+    return {}
+
+def save_patient_record(p_id, diagnosis, confidence, attention_index):
+    history = load_patient_history()
+    if p_id not in history: history[p_id] = []
+    new_entry = {
+        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M"),
+        "diagnosis": diagnosis,
+        "confidence": round(float(confidence), 2),
+        "attention_index": round(float(attention_index), 2)
+    }
+    history[p_id].append(new_entry)
+    with open(HISTORY_FILE, "w") as f: json.dump(history, f, indent=4)
+    return history[p_id]
+
 # =====================================================================
 #  3. PROCESSING ENGINE & GLARE-FREE REGION SEGMENTATION (ROI)
 # =====================================================================
@@ -95,19 +117,13 @@ def preprocess_for_inference(img_bgr):
     return np.expand_dims(tensor, axis=0)
 
 def run_pre_computing_screening(img_bgr):
-    """
-    Executes raw data matrix filtering before exposing files to neural nodes.
-    Checks structural circle area constraints and mean pixel luminance.
-    """
     h, w, _ = img_bgr.shape
     gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
     
-    # Check 1: Exposure Test
     mean_brightness = np.mean(gray)
     if mean_brightness < 10:
         return False, "REJECTED: Low asset luminance exposure (Image too dark).", None, None, None
         
-    # Check 2: Geometry Structural Test
     _, thresh = cv2.threshold(gray, 15, 255, cv2.THRESH_BINARY)
     contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     
@@ -118,7 +134,6 @@ def run_pre_computing_screening(img_bgr):
     contour_area = cv2.contourArea(largest_contour)
     total_area = h * w
     
-    # Eye canvas must cover at least 15% of the file stream area
     if contour_area < (total_area * 0.15):
         return False, "REJECTED: Geometry unverified. Extracted fundus structure area is too small.", None, None, None
         
@@ -146,36 +161,42 @@ def compute_diagnostic_graphs(img_tensor, grad_model, pred_idx, img_bgr, x_cente
     heatmap_uint8 = np.uint8(255 * raw_heatmap)
     heatmap_resized = cv2.resize(heatmap_uint8, (w, h))
     
-    # 80% Safe Circle Inner Radius Area Cutoff
     perfect_circle_mask = np.zeros((h, w), dtype=np.uint8)
     safe_radius = int(radius * 0.80)
     cv2.circle(perfect_circle_mask, (int(x_center), int(y_center)), safe_radius, 255, -1)
     isolated_heatmap = cv2.bitwise_and(heatmap_resized, perfect_circle_mask)
         
-    # Generate the 3rd Marking Graph: Bounding Box Contours (ROI)
-    max_internal_val = np.max(isolated_heatmap)
-    if max_internal_val == 0: max_internal_val = 1
-    
-    _, binary_mask = cv2.threshold(isolated_heatmap, int(0.55 * max_internal_val), 255, cv2.THRESH_BINARY)
-    lesion_contours, _ = cv2.findContours(binary_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    
-    boundary_img_bgr = img_bgr.copy()
-    mask_overlay = np.zeros_like(img_bgr)
-    total_anomaly_pixels = 0
-    
-    for contour in lesion_contours:
-        area = cv2.contourArea(contour)
-        if area > 25:
-            total_anomaly_pixels += area
-            cv2.drawContours(mask_overlay, [contour], -1, (255, 255, 0), -1)
-            cv2.drawContours(boundary_img_bgr, [contour], -1, (255, 255, 0), 1)
-            x, y, box_w, box_h = cv2.boundingRect(contour)
-            cv2.rectangle(boundary_img_bgr, (x, y), (x + box_w, y + box_h), (0, 255, 255), 2)
-            cv2.putText(boundary_img_bgr, f"ROI: [{x},{y}]", (x, max(y - 8, 20)), 
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 2)
-            
-    cv2.addWeighted(mask_overlay, 0.25, boundary_img_bgr, 0.75, 0, dst=boundary_img_bgr)
-    stress_pct = (total_anomaly_pixels / (h * w)) * 100
+    # --- APPROACH A CORE QUANTIFICATION & GATEKEEPER INTERACTION LOGIC ---
+    if pred_idx == 0:
+        # Enforce clinical validation overrule strategy
+        ai_attention_index = 0.0
+        boundary_img_bgr = img_bgr.copy()
+    else:
+        active_pixels = isolated_heatmap[isolated_heatmap > 0]
+        if len(active_pixels) > 0:
+            top_threshold = np.percentile(active_pixels, 90)
+            ai_attention_index = np.mean(active_pixels[active_pixels >= top_threshold]) / 255.0 * 100.0
+        else:
+            ai_attention_index = 0.0
+
+        max_internal_val = np.max(isolated_heatmap) if np.max(isolated_heatmap) > 0 else 1
+        _, binary_mask = cv2.threshold(isolated_heatmap, int(0.55 * max_internal_val), 255, cv2.THRESH_BINARY)
+        lesion_contours, _ = cv2.findContours(binary_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        
+        boundary_img_bgr = img_bgr.copy()
+        mask_overlay = np.zeros_like(img_bgr)
+        
+        for contour in lesion_contours:
+            area = cv2.contourArea(contour)
+            if area > 25:
+                cv2.drawContours(mask_overlay, [contour], -1, (255, 255, 0), -1)
+                cv2.drawContours(boundary_img_bgr, [contour], -1, (255, 255, 0), 1)
+                x, y, box_w, box_h = cv2.boundingRect(contour)
+                cv2.rectangle(boundary_img_bgr, (x, y), (x + box_w, y + box_h), (0, 255, 255), 2)
+                cv2.putText(boundary_img_bgr, "ROI FOCUS", (x, max(y - 8, 20)), 
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 2)
+                
+        cv2.addWeighted(mask_overlay, 0.25, boundary_img_bgr, 0.75, 0, dst=boundary_img_bgr)
     
     # Compute quadrant distribution statistics
     quad_y, quad_x = int(y_center), int(x_center)
@@ -190,7 +211,7 @@ def compute_diagnostic_graphs(img_tensor, grad_model, pred_idx, img_bgr, x_cente
     dominant_quadrant = max(quad_sums, key=quad_sums.get) if total_sum > 0 else "Central"
     quadrant_focus_pct = (quad_sums[dominant_quadrant] / total_sum * 100) if total_sum > 0 else 0.0
     
-    return isolated_heatmap, boundary_img_bgr, stress_pct, dominant_quadrant, quadrant_focus_pct
+    return isolated_heatmap, boundary_img_bgr, ai_attention_index, dominant_quadrant, quadrant_focus_pct
 
 # =====================================================================
 #  4. USER INTERFACE GRAPHICS RENDERING CANVAS
@@ -211,8 +232,13 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# App Sidebar Controls
+st.sidebar.title("🩺 Clinical Control Hub")
+st.sidebar.markdown("---")
+patient_id = st.sidebar.text_input("👤 Patient ID Key", value="PATIENT-401").strip().upper()
+
 if model_loaded:
-    uploaded_file = st.file_uploader("Upload Retinal Record Asset", type=["jpg", "jpeg", "png"])
+    uploaded_file = st.sidebar.file_uploader("Upload Retinal Record Asset", type=["jpg", "jpeg", "png"])
     
     if uploaded_file is not None:
         file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
@@ -229,7 +255,6 @@ if model_loaded:
             </div>
             """, unsafe_allow_html=True)
         else:
-            # Asset cleared metrics. Proceed safely to execution loops.
             img_tensor = preprocess_for_inference(img_bgr)
             
             with st.spinner("Processing Imaging Analytics..."):
@@ -240,11 +265,14 @@ if model_loaded:
             confidence = probabilities[pred_idx] * 100
             accent_color = SEVERITY_COLOR[pred_name]
             
-            # Compute processing maps including the 3rd Visual Graph
-            isolated_heatmap, boundary_img, pathology_area, dominant_quad, quad_pct = compute_diagnostic_graphs(
+            # Compute processing maps using our upgraded metric formulas
+            isolated_heatmap, boundary_img, attention_index, dominant_quad, quad_pct = compute_diagnostic_graphs(
                 img_tensor, grad_model, pred_idx, img_bgr, x_center, y_center, radius
             )
             
+            # Save telemetry arrays to historical tracking profile
+            record_logs = save_patient_record(patient_id, pred_name, confidence, attention_index)
+
             heatmap_color = cv2.applyColorMap(isolated_heatmap, cv2.COLORMAP_JET)
             gradcam_blend = cv2.addWeighted(heatmap_color, 0.38, img_bgr, 0.62, 0)
             
@@ -252,22 +280,39 @@ if model_loaded:
             gradcam_rgb = cv2.cvtColor(gradcam_blend, cv2.COLOR_BGR2RGB)
             boundary_rgb = cv2.cvtColor(boundary_img, cv2.COLOR_BGR2RGB)
             
-            # === ROW 1: THE THREE VISUAL IMAGING GRAPHS (RESTORED WITH PRE-COMPUTING GUARANTEES) ===
-            st.markdown("<h4 style='color: #8b949e; font-size:13px; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;'>Visual Diagnostic Trackers</h4>", unsafe_allow_html=True)
-            img_col1, img_col2, img_col3 = st.columns(3, gap="medium")
+            # === ROW 1: THE FOUR VISUAL IMAGING GRAPHS HORIZONTAL PANEL ===
+            st.markdown("<h4 style='color: #8b949e; font-size:13px; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;'>Multi-Panel Diagnostic Worksheet Trackers</h4>", unsafe_allow_html=True)
+            img_col1, img_col2, img_col3, img_col4 = st.columns(4, gap="medium")
             
             with img_col1:
                 st.markdown("<span style='color: #8b949e; font-size: 11px; text-transform: uppercase; font-weight:600;'>I. Base Input</span>", unsafe_allow_html=True)
                 st.image(img_rgb, use_container_width=True)
                 
             with img_col2:
-                st.markdown("<span style='color: #8b949e; font-size: 11px; text-transform: uppercase; font-weight:600;'>II. Grad-CAM Map</span>", unsafe_allow_html=True)
+                st.markdown("<span style='color: #8b949e; font-size: 11px; text-transform: uppercase; font-weight:600;'>II. Glare-Free Grad-CAM Map</span>", unsafe_allow_html=True)
                 st.image(gradcam_rgb, use_container_width=True)
                 
             with img_col3:
-                st.markdown(f"<span style='color: #00FFFF; font-size: 11px; text-transform: uppercase; font-weight:600;'>III. Automated Lesion Boundary ({pathology_area:.2f}%)</span>", unsafe_allow_html=True)
+                st.markdown(f"<span style='color: #00FFFF; font-size: 11px; text-transform: uppercase; font-weight:600;'>III. AI Attention Marking ({attention_index:.1f} Index)</span>", unsafe_allow_html=True)
                 st.image(boundary_rgb, use_container_width=True)
                 
+            with img_col4:
+                st.markdown("<span style='color: #38bdf8; font-size: 11px; text-transform: uppercase; font-weight:600;'>IV. AI Attention Intensity Tracker</span>", unsafe_allow_html=True)
+                fig, ax = plt.subplots(figsize=(4, 3.5))
+                visit_stamps = [r["timestamp"].split(" ")[0] for r in record_logs]
+                attention_indices = [r["attention_index"] for r in record_logs]
+                ax.plot(range(len(record_logs)), attention_indices, marker='o', color='#38bdf8', linewidth=2.5)
+                ax.set_xticks(range(len(record_logs)))
+                ax.set_xticklabels(visit_stamps, rotation=25, ha='right', fontsize=8)
+                ax.set_ylim(-5, 105)
+                ax.grid(True, linestyle='--', alpha=0.4)
+                fig.patch.set_facecolor('#161b22')
+                ax.set_facecolor('#0d1117')
+                ax.spines['bottom'].set_color('#8b949e')
+                ax.spines['left'].set_color('#8b949e')
+                ax.tick_params(colors='#8b949e', labelsize=8)
+                st.pyplot(fig)
+
             # === ROW 2: CLINICAL QUANTIFICATION AND PROGRESS METRICS ===
             st.markdown("<br><h4 style='color: #8b949e; font-size:13px; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;'>Classification & Metrics Summary</h4>", unsafe_allow_html=True)
             data_col1, data_col2 = st.columns([1, 1], gap="medium")
@@ -275,7 +320,7 @@ if model_loaded:
             with data_col1:
                 st.markdown("<span style='color: #8b949e; font-size: 11px; text-transform: uppercase; font-weight:600;'>Diagnostic Verdict</span>", unsafe_allow_html=True)
                 st.markdown(f"<div style='font-size: 32px; font-weight: 700; color: {accent_color}; margin-top:5px;'>{pred_name}</div>", unsafe_allow_html=True)
-                st.markdown(f"<div style='font-size: 14px; color: #8b949e; margin-bottom:12px;'>Confidence: {confidence:.2f}% | Pathological Footprint: {pathology_area:.2f}%</div>", unsafe_allow_html=True)
+                st.markdown(f"<div style='font-size: 14px; color: #8b949e; margin-bottom:12px;'>Confidence: {confidence:.2f}% | Attention Intensity Score: {attention_index:.1f}%</div>", unsafe_allow_html=True)
                 st.markdown(f"<div style='font-size: 14px; line-height:1.5; color:#c9d1d9;'>{CLASS_DESCRIPTIONS[pred_idx]}</div>", unsafe_allow_html=True)
                 
             with data_col2:
@@ -290,7 +335,7 @@ if model_loaded:
                     st.markdown(f"<div style='font-size: 12px; color: {label_color}; display: flex; justify-content: space-between; font-weight:500; margin-bottom:2px;'><span>{cname}</span><span>{pct*100:.1f}%</span></div>", unsafe_allow_html=True)
                     st.progress(pct)
 
-            # === ROW 3: BANNERS ===
+            # === ROW 3: BANNERS EXPLAINING EXPLAINABLE AI OUTPUTS ===
             st.markdown("<br>", unsafe_allow_html=True)
             if pred_idx == 0:
                 xai_text = "The internal neural activations are uniform and clean. No statistically significant anomalous pixel groupings were identified, indicating a stable vascular layer context."
@@ -308,7 +353,7 @@ if model_loaded:
             """, unsafe_allow_html=True)
             
             st.markdown(f"""
-            <div style="background: #1b1c16; border: 1px solid #4d4617; border-radius: 12px; padding: 18px; display: flex; gap: 14px;">
+            <div style="background: #1b1c16; border: 1px solid #4d4617; border-radius: 12px; padding: 18px; display: flex; gap: 14px; margin-bottom:25px;">
                 <div style="font-size: 22px; margin-top:-2px;">📋</div>
                 <div>
                     <div style="font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #e2da9a; font-weight: 600; margin-bottom: 4px;">Clinical Management Directive</div>
@@ -316,3 +361,33 @@ if model_loaded:
                 </div>
             </div>
             """, unsafe_allow_html=True)
+
+            # === ROW 4: DATA PAYLOAD LOGGING TABLE ===
+            st.subheader(f"📋 Historical Tracking Summary Log ({patient_id})")
+            table_html = """
+            <table style="width:100%; text-align:left; border-collapse:collapse; font-size:14px; background:#161b22; border:1px solid #30363d; border-radius:8px;">
+                <thead>
+                    <tr style="border-bottom:2px solid #30363d; color:#8b949e; background:#0d1117;">
+                        <th style="padding:12px;">Visit Index</th>
+                        <th style="padding:12px;">Timestamp</th>
+                        <th style="padding:12px;">Diagnosis Verdict</th>
+                        <th style="padding:12px;">Confidence Score</th>
+                        <th style="padding:12px;">Attention Index</th>
+                    </tr>
+                </thead>
+                <tbody>
+            """
+            for i, r in enumerate(record_logs):
+                table_html += f"""
+                <tr style="border-bottom:1px solid #30363d;">
+                    <td style="padding:12px;"><b>#{i+1}</b></td>
+                    <td style="padding:12px;">{r['timestamp']}</td>
+                    <td style="padding:12px;">{r['diagnosis']}</td>
+                    <td style="padding:12px;">{r['confidence']}%</td>
+                    <td style="padding:12px; color:#38bdf8;"><b>{r['attention_index']:.1f}%</b></td>
+                </tr>
+                """
+            table_html += "</tbody></table>"
+            st.markdown(table_html, unsafe_allow_html=True)
+    else:
+        st.info("👋 Welcome! Please upload a retinal fundus photo inside the left sidebar panel to initialize the tracking dashboard timeline sequence workflows.")
