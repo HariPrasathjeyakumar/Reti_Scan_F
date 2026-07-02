@@ -27,7 +27,7 @@ st.markdown("""
         background-color: #1e293b; border: 1px solid #334155; padding: 15px; border-radius: 10px;
     }
     </style>
-""", unsafe_allowed_allowed_html=True)
+""", unsafe_allowed_html=True)
 
 IMG_SIZE = 224
 HISTORY_FILE = "patient_history.json"
