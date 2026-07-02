@@ -362,9 +362,12 @@ if model_loaded:
             </div>
             """, unsafe_allow_html=True)
 
-            # === ROW 4: DATA PAYLOAD LOGGING TABLE ===
+            # === ROW 4: DATA PAYLOAD LOGGING TABLE (FIXED FOR CORRECT HTML RENDERING) ===
+            st.markdown("<br>", unsafe_allow_html=True)
             st.subheader(f"📋 Historical Tracking Summary Log ({patient_id})")
-            table_html = """
+            
+            # Formulate full valid HTML string block
+            table_header = """
             <table style="width:100%; text-align:left; border-collapse:collapse; font-size:14px; background:#161b22; border:1px solid #30363d; border-radius:8px;">
                 <thead>
                     <tr style="border-bottom:2px solid #30363d; color:#8b949e; background:#0d1117;">
@@ -377,8 +380,10 @@ if model_loaded:
                 </thead>
                 <tbody>
             """
+            
+            table_body = ""
             for i, r in enumerate(record_logs):
-                table_html += f"""
+                table_body += f"""
                 <tr style="border-bottom:1px solid #30363d;">
                     <td style="padding:12px;"><b>#{i+1}</b></td>
                     <td style="padding:12px;">{r['timestamp']}</td>
@@ -387,7 +392,13 @@ if model_loaded:
                     <td style="padding:12px; color:#38bdf8;"><b>{r['attention_index']:.1f}%</b></td>
                 </tr>
                 """
-            table_html += "</tbody></table>"
-            st.markdown(table_html, unsafe_allow_html=True)
+                
+            table_footer = "</tbody></table>"
+            
+            # Combine everything into one single cohesive string
+            final_html_payload = table_header + table_body + table_footer
+            
+            # Render directly using st.markdown
+            st.markdown(final_html_payload, unsafe_allow_html=True)
     else:
         st.info("👋 Welcome! Please upload a retinal fundus photo inside the left sidebar panel to initialize the tracking dashboard timeline sequence workflows.")
