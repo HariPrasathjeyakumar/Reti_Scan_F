@@ -358,33 +358,29 @@ if model_loaded:
             </div>
             """, unsafe_allow_html=True)
 
-            # === ROW 4: DATA PAYLOAD LOGGING TABLE (UNIFIED TO PREVENT STRING ESCAPING) ===
+            # === ROW 4: DATA PAYLOAD LOGGING TABLE (FIXED INDENTATION FOR TRUE RENDER) ===
             st.subheader(f"📋 Historical Tracking Summary Log ({patient_id})")
             
-            table_html = """
-            <table style="width:100%; text-align:left; border-collapse:collapse; font-size:14px; background:#161b22; border:1px solid #30363d; border-radius:8px;">
-                <thead>
-                    <tr style="border-bottom:2px solid #30363d; color:#8b949e; background:#0d1117;">
-                        <th style="padding:12px;">Visit Index</th>
-                        <th style="padding:12px;">Timestamp</th>
-                        <th style="padding:12px;">Diagnosis Verdict</th>
-                        <th style="padding:12px;">Confidence Score</th>
-                        <th style="padding:12px;">Attention Index</th>
-                    </tr>
-                </thead>
-                <tbody>
-            """
+            table_html = '<table style="width:100%; text-align:left; border-collapse:collapse; font-size:14px; background:#161b22; border:1px solid #30363d; border-radius:8px;">'
+            table_html += '<thead><tr style="border-bottom:2px solid #30363d; color:#8b949e; background:#0d1117;">'
+            table_html += '<th style="padding:12px;">Visit Index</th>'
+            table_html += '<th style="padding:12px;">Timestamp</th>'
+            table_html += '<th style="padding:12px;">Diagnosis Verdict</th>'
+            table_html += '<th style="padding:12px;">Confidence Score</th>'
+            table_html += '<th style="padding:12px;">Attention Index</th>'
+            table_html += '</tr></thead><tbody>'
+            
             for i, r in enumerate(record_logs):
-                table_html += f"""
-                <tr style="border-bottom:1px solid #30363d;">
-                    <td style="padding:12px;"><b>#{i+1}</b></td>
-                    <td style="padding:12px;">{r['timestamp']}</td>
-                    <td style="padding:12px;">{r['diagnosis']}</td>
-                    <td style="padding:12px;">{r['confidence']}%</td>
-                    <td style="padding:12px; color:#38bdf8;"><b>{r['attention_index']:.1f}%</b></td>
-                </tr>
-                """
-            table_html += "</tbody></table>"
+                table_html += '<tr style="border-bottom:1px solid #30363d;">'
+                table_html += f'<td style="padding:12px;"><b>#{i+1}</b></td>'
+                table_html += f'<td style="padding:12px;">{r["timestamp"]}</td>'
+                table_html += f'<td style="padding:12px;">{r["diagnosis"]}</td>'
+                table_html += f'<td style="padding:12px;">{r["confidence"]}%</td>'
+                table_html += f'<td style="padding:12px; color:#38bdf8;"><b>{r["attention_index"]:.1f}%</b></td>'
+                table_html += '</tr>'
+                
+            table_html += '</tbody></table>'
+            
             st.markdown(table_html, unsafe_allow_html=True)
     else:
         st.info("👋 Welcome! Please upload a retinal fundus photo inside the left sidebar panel to initialize the tracking dashboard timeline sequence workflows.")
