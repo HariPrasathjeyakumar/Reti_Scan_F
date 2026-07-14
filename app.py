@@ -168,7 +168,7 @@ def generate_clinical_pdf(p_id, verdict, conf, attn_idx, quad, quad_pct, directi
     pdf.set_font("Helvetica", "I", 11)
     pdf.multi_cell(0, 6, directive)
     
-    return pdf.output()
+    return bytes(pdf.output())
 
 def run_pre_computing_screening(img_bgr):
     h, w, _ = img_bgr.shape
