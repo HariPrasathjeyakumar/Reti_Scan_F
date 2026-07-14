@@ -4,3 +4,4 @@ matplotlib
 numpy
 gdown
 fpdf2>=2.7.0
+scikit-image>=0.21.0
