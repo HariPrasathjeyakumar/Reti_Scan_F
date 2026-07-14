@@ -171,11 +171,12 @@ def run_pre_computing_screening(img_bgr):
     h, w, _ = img_bgr.shape
     gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
     
-    # IQA Blur Gate
+    # 1. IQA Blur Gate
     blur_score = cv2.Laplacian(gray, cv2.CV_64F).var()
     if blur_score < 45.0:
         return False, f"REJECTED: Asset fails focal clarity standards (Blur Variance: {blur_score:.1f}). Please recapture.", None, None, None
 
+    # 2. Geometry & Luminance Checks
     mean_brightness = np.mean(gray)
     if mean_brightness < 10:
         return False, "REJECTED: Low asset luminance exposure (Image too dark).", None, None, None
@@ -194,6 +195,20 @@ def run_pre_computing_screening(img_bgr):
         return False, "REJECTED: Geometry unverified. Extracted fundus structure area is too small.", None, None, None
         
     (x_center, y_center), radius = cv2.minEnclosingCircle(largest_contour)
+    
+    # --- NEW: 3. Biological Pigmentation Gate ---
+    # Create a mask to only look at the inside of the circular object (ignoring the background)
+    circle_mask = np.zeros((h, w), dtype=np.uint8)
+    cv2.circle(circle_mask, (int(x_center), int(y_center)), int(radius * 0.8), 255, -1)
+    
+    # Calculate the average Blue, Green, and Red channel values inside that circle
+    mean_b, mean_g, mean_r, _ = cv2.mean(img_bgr, mask=circle_mask)
+    
+    # Biological retinas are highly red-dominant with very low blue reflection.
+    # If the blue channel is too high, or red isn't the dominant color, it's not a retina.
+    if mean_b > 90 or mean_r < mean_g:
+        return False, f"REJECTED: Biological profile mismatch. Asset lacks standard retinal pigmentation signatures (High anomalous blue/green reflection detected).", None, None, None
+
     return True, "PASSED", x_center, y_center, radius
 
 def generate_vascular_map(img_bgr, x_center, y_center, radius):
