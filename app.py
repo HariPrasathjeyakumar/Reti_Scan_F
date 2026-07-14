@@ -7,7 +7,8 @@ import gdown
 import json
 import matplotlib.pyplot as plt
 from datetime import datetime
-from fpdf import FPDF  # Lightweight PDF serialization engine
+from fpdf import FPDF
+from skimage.filters import frangi # Mathematical vascular extraction
 
 # Set page configurations to clean wide layout
 st.set_page_config(page_title="RetiScan Pro v5", layout="wide", initial_sidebar_state="expanded")
@@ -111,7 +112,7 @@ def save_patient_record(p_id, diagnosis, confidence, attention_index):
     return history[p_id]
 
 # =====================================================================
-#  3. PROCESSING ENGINE & GLARE-FREE REGION SEGMENTATION (ROI)
+#  3. PROCESSING ENGINE & METRICS (IQA, VASCULAR, TTA, PDF)
 # =====================================================================
 def preprocess_for_inference(img_bgr):
     rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
@@ -119,14 +120,10 @@ def preprocess_for_inference(img_bgr):
     tensor = rgb.astype(np.float32)
     return np.expand_dims(tensor, axis=0)
 
-# --- TEST-TIME AUGMENTATION ENSEMBLE ENGINE ---
 def run_tta_ensemble_inference(model, base_tensor):
-    """Executes multi-variant consensus mapping without changing model architectures."""
     pred_base = model.predict_on_batch(base_tensor)[0]
-    
     flipped_tensor = np.flip(base_tensor, axis=2)
     pred_flipped = model.predict_on_batch(flipped_tensor)[0]
-    
     gamma_tensor = np.clip(base_tensor * 1.05, 0.0, 255.0)
     pred_gamma = model.predict_on_batch(gamma_tensor)[0]
     
@@ -138,7 +135,6 @@ def run_tta_ensemble_inference(model, base_tensor):
     
     return fused_probabilities, consensus_badge
 
-# --- CLINICAL SUMMARY REPORT GENERATION ENGINE ---
 def generate_clinical_pdf(p_id, verdict, conf, attn_idx, quad, quad_pct, directive, consensus):
     pdf = FPDF()
     pdf.add_page()
@@ -168,12 +164,18 @@ def generate_clinical_pdf(p_id, verdict, conf, attn_idx, quad, quad_pct, directi
     pdf.set_font("Helvetica", "I", 11)
     pdf.multi_cell(0, 6, directive)
     
+    # Cast to bytes to ensure Streamlit download button compatibility
     return bytes(pdf.output())
 
 def run_pre_computing_screening(img_bgr):
     h, w, _ = img_bgr.shape
     gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
     
+    # IQA Blur Gate
+    blur_score = cv2.Laplacian(gray, cv2.CV_64F).var()
+    if blur_score < 45.0:
+        return False, f"REJECTED: Asset fails focal clarity standards (Blur Variance: {blur_score:.1f}). Please recapture.", None, None, None
+
     mean_brightness = np.mean(gray)
     if mean_brightness < 10:
         return False, "REJECTED: Low asset luminance exposure (Image too dark).", None, None, None
@@ -193,6 +195,24 @@ def run_pre_computing_screening(img_bgr):
         
     (x_center, y_center), radius = cv2.minEnclosingCircle(largest_contour)
     return True, "PASSED", x_center, y_center, radius
+
+def generate_vascular_map(img_bgr, x_center, y_center, radius):
+    h, w, _ = img_bgr.shape
+    _, g, _ = cv2.split(img_bgr)
+    
+    clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
+    enhanced_g = clahe.apply(g)
+    inverted_g = cv2.bitwise_not(enhanced_g)
+    
+    vesselness = frangi(inverted_g, sigmas=range(1, 4, 1), black_ridges=False)
+    vesselness_norm = cv2.normalize(vesselness, None, 0, 255, cv2.NORM_MINMAX, dtype=cv2.CV_8U)
+    
+    perfect_circle_mask = np.zeros((h, w), dtype=np.uint8)
+    safe_radius = int(radius * 0.92)
+    cv2.circle(perfect_circle_mask, (int(x_center), int(y_center)), safe_radius, 255, -1)
+    
+    clean_vessel_map = cv2.bitwise_and(vesselness_norm, perfect_circle_mask)
+    return clean_vessel_map
 
 def compute_diagnostic_graphs(img_tensor, grad_model, pred_idx, img_bgr, x_center, y_center, radius):
     h, w, _ = img_bgr.shape
@@ -318,6 +338,9 @@ if model_loaded:
                 img_tensor, grad_model, pred_idx, img_bgr, x_center, y_center, radius
             )
             
+            with st.spinner("Mapping Vascular Topography..."):
+                vessel_map = generate_vascular_map(img_bgr, x_center, y_center, radius)
+                
             record_logs = save_patient_record(patient_id, pred_name, confidence, attention_index)
 
             heatmap_color = cv2.applyColorMap(isolated_heatmap, cv2.COLORMAP_JET)
@@ -329,22 +352,26 @@ if model_loaded:
             
             # === ROW 1: IMAGING HORIZONTAL PANEL ===
             st.markdown("<h4 style='color: #8b949e; font-size:13px; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;'>Multi-Panel Diagnostic Worksheet Trackers</h4>", unsafe_allow_html=True)
-            img_col1, img_col2, img_col3, img_col4 = st.columns(4, gap="medium")
+            img_col1, img_col2, img_col3, img_col4, img_col5 = st.columns(5, gap="medium")
             
             with img_col1:
                 st.markdown("<span style='color: #8b949e; font-size: 11px; text-transform: uppercase; font-weight:600;'>I. Base Input</span>", unsafe_allow_html=True)
                 st.image(img_rgb, use_container_width=True)
                 
             with img_col2:
-                st.markdown("<span style='color: #8b949e; font-size: 11px; text-transform: uppercase; font-weight:600;'>II. Glare-Free Grad-CAM Map</span>", unsafe_allow_html=True)
-                st.image(gradcam_rgb, use_container_width=True)
+                st.markdown("<span style='color: #8b949e; font-size: 11px; text-transform: uppercase; font-weight:600;'>II. Vascular Topology Map</span>", unsafe_allow_html=True)
+                st.image(vessel_map, use_container_width=True, clamp=True)
                 
             with img_col3:
-                st.markdown(f"<span style='color: #00FFFF; font-size: 11px; text-transform: uppercase; font-weight:600;'>III. AI Attention Marking ({attention_index:.1f} Index)</span>", unsafe_allow_html=True)
-                st.image(boundary_rgb, use_container_width=True)
+                st.markdown("<span style='color: #8b949e; font-size: 11px; text-transform: uppercase; font-weight:600;'>III. Grad-CAM Path Map</span>", unsafe_allow_html=True)
+                st.image(gradcam_rgb, use_container_width=True)
                 
             with img_col4:
-                st.markdown("<span style='color: #38bdf8; font-size: 11px; text-transform: uppercase; font-weight:600;'>IV. AI Diagnostic Trend Forecasting</span>", unsafe_allow_html=True)
+                st.markdown(f"<span style='color: #00FFFF; font-size: 11px; text-transform: uppercase; font-weight:600;'>IV. AI Focus ({attention_index:.1f} Index)</span>", unsafe_allow_html=True)
+                st.image(boundary_rgb, use_container_width=True)
+                
+            with img_col5:
+                st.markdown("<span style='color: #38bdf8; font-size: 11px; text-transform: uppercase; font-weight:600;'>V. Diagnostics Forecast</span>", unsafe_allow_html=True)
                 fig, ax = plt.subplots(figsize=(4, 3.5))
                 
                 visit_stamps = [r["timestamp"].split(" ")[0] for r in record_logs]
@@ -353,7 +380,6 @@ if model_loaded:
                 
                 ax.plot(x_indices, attention_indices, marker='o', color='#38bdf8', linewidth=2.5, label='Historical')
                 
-                # --- TRAJECTORY LINEAR REGRESSION FORECASTING ENGINE ---
                 if len(record_logs) >= 2:
                     slope, intercept = np.polyfit(x_indices, attention_indices, 1)
                     next_x = len(record_logs)
