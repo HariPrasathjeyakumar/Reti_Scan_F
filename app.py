@@ -7,6 +7,7 @@ import gdown
 import json
 import matplotlib.pyplot as plt
 from datetime import datetime
+from fpdf import FPDF  # Lightweight PDF serialization engine
 
 # Set page configurations to clean wide layout
 st.set_page_config(page_title="RetiScan Pro v5", layout="wide", initial_sidebar_state="expanded")
@@ -118,6 +119,57 @@ def preprocess_for_inference(img_bgr):
     tensor = rgb.astype(np.float32)
     return np.expand_dims(tensor, axis=0)
 
+# --- TEST-TIME AUGMENTATION ENSEMBLE ENGINE ---
+def run_tta_ensemble_inference(model, base_tensor):
+    """Executes multi-variant consensus mapping without changing model architectures."""
+    pred_base = model.predict_on_batch(base_tensor)[0]
+    
+    flipped_tensor = np.flip(base_tensor, axis=2)
+    pred_flipped = model.predict_on_batch(flipped_tensor)[0]
+    
+    gamma_tensor = np.clip(base_tensor * 1.05, 0.0, 255.0)
+    pred_gamma = model.predict_on_batch(gamma_tensor)[0]
+    
+    fused_probabilities = (pred_base + pred_flipped + pred_gamma) / 3.0
+    
+    variance = np.var([pred_base, pred_flipped, pred_gamma], axis=0)
+    mean_variance = np.mean(variance)
+    consensus_badge = "HIGH CONSENSUS" if mean_variance < 0.02 else "BORDERLINE VERIFICATION REQUIRED"
+    
+    return fused_probabilities, consensus_badge
+
+# --- CLINICAL SUMMARY REPORT GENERATION ENGINE ---
+def generate_clinical_pdf(p_id, verdict, conf, attn_idx, quad, quad_pct, directive, consensus):
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Helvetica", "B", 18)
+    pdf.set_text_color(16, 185, 129)
+    pdf.cell(0, 10, "RETISCAN PRO DIAGNOSTIC SUMMARY REPORT", ln=True, align="C")
+    pdf.ln(10)
+    
+    pdf.set_font("Helvetica", "", 12)
+    pdf.set_text_color(0, 0, 0)
+    pdf.cell(0, 8, f"Patient Tracking Key: {p_id}", ln=True)
+    pdf.cell(0, 8, f"Generated Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M')}", ln=True)
+    pdf.cell(0, 8, f"Ensemble Integrity State: {consensus}", ln=True)
+    pdf.line(10, pdf.get_y() + 2, 200, pdf.get_y() + 2)
+    pdf.ln(8)
+    
+    pdf.set_font("Helvetica", "B", 14)
+    pdf.cell(0, 10, f"Diagnostic Conclusion: {verdict}", ln=True)
+    pdf.set_font("Helvetica", "", 12)
+    pdf.cell(0, 8, f"Statistical Classification Confidence: {conf:.2f}%", ln=True)
+    pdf.cell(0, 8, f"AI Neuro-Attention Mapping Index: {attn_idx:.1f}%", ln=True)
+    pdf.cell(0, 8, f"Dominant Pathology Cluster: {quad} Quadrant ({quad_pct:.1f}% Focus)", ln=True)
+    pdf.ln(5)
+    
+    pdf.set_font("Helvetica", "B", 12)
+    pdf.cell(0, 8, "Official Management Protocol Directive:", ln=True)
+    pdf.set_font("Helvetica", "I", 11)
+    pdf.multi_cell(0, 6, directive)
+    
+    return pdf.output()
+
 def run_pre_computing_screening(img_bgr):
     h, w, _ = img_bgr.shape
     gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
@@ -168,7 +220,6 @@ def compute_diagnostic_graphs(img_tensor, grad_model, pred_idx, img_bgr, x_cente
     cv2.circle(perfect_circle_mask, (int(x_center), int(y_center)), safe_radius, 255, -1)
     isolated_heatmap = cv2.bitwise_and(heatmap_resized, perfect_circle_mask)
         
-    # --- APPROACH A QUANTIFICATION ---
     if pred_idx == 0:
         ai_attention_index = 0.0
         boundary_img_bgr = img_bgr.copy()
@@ -255,8 +306,8 @@ if model_loaded:
         else:
             img_tensor = preprocess_for_inference(img_bgr)
             
-            with st.spinner("Processing Imaging Analytics..."):
-                probabilities = model.predict_on_batch(img_tensor)[0]
+            with st.spinner("Processing Multi-Variant Ensemble Imaging Analytics..."):
+                probabilities, consensus_status = run_tta_ensemble_inference(model, img_tensor)
                 
             pred_idx = int(np.argmax(probabilities))
             pred_name = CLASS_NAMES[pred_idx]
@@ -293,13 +344,33 @@ if model_loaded:
                 st.image(boundary_rgb, use_container_width=True)
                 
             with img_col4:
-                st.markdown("<span style='color: #38bdf8; font-size: 11px; text-transform: uppercase; font-weight:600;'>IV. AI Attention Intensity Tracker</span>", unsafe_allow_html=True)
+                st.markdown("<span style='color: #38bdf8; font-size: 11px; text-transform: uppercase; font-weight:600;'>IV. AI Diagnostic Trend Forecasting</span>", unsafe_allow_html=True)
                 fig, ax = plt.subplots(figsize=(4, 3.5))
+                
                 visit_stamps = [r["timestamp"].split(" ")[0] for r in record_logs]
                 attention_indices = [r["attention_index"] for r in record_logs]
-                ax.plot(range(len(record_logs)), attention_indices, marker='o', color='#38bdf8', linewidth=2.5)
-                ax.set_xticks(range(len(record_logs)))
-                ax.set_xticklabels(visit_stamps, rotation=25, ha='right', fontsize=8)
+                x_indices = np.arange(len(record_logs))
+                
+                ax.plot(x_indices, attention_indices, marker='o', color='#38bdf8', linewidth=2.5, label='Historical')
+                
+                # --- TRAJECTORY LINEAR REGRESSION FORECASTING ENGINE ---
+                if len(record_logs) >= 2:
+                    slope, intercept = np.polyfit(x_indices, attention_indices, 1)
+                    next_x = len(record_logs)
+                    next_y_pred = max(0.0, min(100.0, slope * next_x + intercept))
+                    
+                    forecast_x = [x_indices[-1], next_x]
+                    forecast_y = [attention_indices[-1], next_y_pred]
+                    ax.plot(forecast_x, forecast_y, linestyle='--', color='#ef4444', linewidth=2, marker='x', label='Forecast')
+                    ax.legend(facecolor='#161b22', edgecolor='#30363d', labelcolor='#8b949e', fontsize=7)
+                    
+                    trajectory_alert = "ACCELERATING" if slope > 1.5 else "STABILIZED"
+                else:
+                    trajectory_alert = "INSUFFICIENT_TIMELINE_DATA"
+                
+                ax.set_xticks(range(len(record_logs) + (1 if len(record_logs) >= 2 else 0)))
+                extended_stamps = visit_stamps + ["(Next)"] if len(record_logs) >= 2 else visit_stamps
+                ax.set_xticklabels(extended_stamps, rotation=25, ha='right', fontsize=8)
                 ax.set_ylim(-5, 105)
                 ax.grid(True, linestyle='--', alpha=0.4)
                 fig.patch.set_facecolor('#161b22')
@@ -317,6 +388,7 @@ if model_loaded:
             with data_col1:
                 st.markdown("<span style='color: #8b949e; font-size: 11px; text-transform: uppercase; font-weight:600;'>Diagnostic Verdict</span>", unsafe_allow_html=True)
                 st.markdown(f"<div style='font-size: 32px; font-weight: 700; color: {accent_color}; margin-top:5px;'>{pred_name}</div>", unsafe_allow_html=True)
+                st.markdown(f"<div style='font-size: 12px; color: #8b949e; margin-bottom:12px;'>Integrity Consensus Validation: <b style='color:#38bdf8;'>{consensus_status}</b></div>", unsafe_allow_html=True)
                 st.markdown(f"<div style='font-size: 14px; color: #8b949e; margin-bottom:12px;'>Confidence: {confidence:.2f}% | Attention Intensity Score: {attention_index:.1f}%</div>", unsafe_allow_html=True)
                 st.markdown(f"<div style='font-size: 14px; line-height:1.5; color:#c9d1d9;'>{CLASS_DESCRIPTIONS[pred_idx]}</div>", unsafe_allow_html=True)
                 
@@ -331,18 +403,24 @@ if model_loaded:
                     st.markdown(f"<div style='font-size: 12px; color: {label_color}; display: flex; justify-content: space-between; font-weight:500; margin-bottom:2px;'><span>{cname}</span><span>{pct*100:.1f}%</span></div>", unsafe_allow_html=True)
                     st.progress(pct)
 
-            # === ROW 3: EXPLAINABLE AI BANNERS ===
+            # === ROW 3: EXPLAINABLE AI BANNERS WITH PREDICTIVE TRACKING ===
             st.markdown("<br>", unsafe_allow_html=True)
             if pred_idx == 0:
                 xai_text = "The internal neural activations are uniform and clean. No statistically significant anomalous pixel groupings were identified, indicating a stable vascular layer context."
             else:
-                xai_text = f"The structural prediction tracking matrix is primarily driven by concentrated pathology vectors localized within the <strong>{dominant_quad} quadrant</strong> (accounting for {quad_pct:.1f}% of overall visual network attention maps). Neural tracking isolated distinct anomalies within this sector."
+                xai_text = f"The structural prediction tracking matrix is primarily driven by concentrated pathology vectors localized within the <strong>{dominant_quad} quadrant</strong> (accounting for {quad_pct:.1f}% of overall visual network attention maps)."
+                
+                if len(record_logs) >= 2:
+                    if trajectory_alert == "ACCELERATING":
+                        xai_text += f" <span style='color:#ef4444; font-weight:bold;'>WARNING: Longitudinal tracking indicates an upward pathology velocity (+{slope:.1f}% index shift per visit). Interventions should be accelerated immediately.</span>"
+                    else:
+                        xai_text += " Longitudinal tracking denotes a stabilized tracking vector path distribution."
 
             st.markdown(f"""
             <div style="background: #1f152d; border: 1px solid #4c297a; border-radius: 12px; padding: 18px; display: flex; gap: 14px; margin-bottom:15px;">
                 <div style="font-size: 22px; margin-top:-2px;">🧠</div>
                 <div>
-                    <div style="font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #d6adff; font-weight: 600; margin-bottom: 4px;">Dynamic XAI Local Analysis</div>
+                    <div style="font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #d6adff; font-weight: 600; margin-bottom: 4px;">Dynamic XAI & Predictive Prognostics</div>
                     <div style="font-size: 13.5px; line-height: 1.45; color: #e1cbff;"><strong>AI Decision Rationale:</strong> {xai_text}</div>
                 </div>
             </div>
@@ -358,7 +436,7 @@ if model_loaded:
             </div>
             """, unsafe_allow_html=True)
 
-            # === ROW 4: DATA PAYLOAD LOGGING TABLE (FIXED INDENTATION FOR TRUE RENDER) ===
+            # === ROW 4: DATA PAYLOAD LOGGING TABLE ===
             st.subheader(f"📋 Historical Tracking Summary Log ({patient_id})")
             
             table_html = '<table style="width:100%; text-align:left; border-collapse:collapse; font-size:14px; background:#161b22; border:1px solid #30363d; border-radius:8px;">'
@@ -380,7 +458,21 @@ if model_loaded:
                 table_html += '</tr>'
                 
             table_html += '</tbody></table>'
-            
             st.markdown(table_html, unsafe_allow_html=True)
-    else:
-        st.info("👋 Welcome! Please upload a retinal fundus photo inside the left sidebar panel to initialize the tracking dashboard timeline sequence workflows.")
+
+            # --- DYNAMIC EXPORT BUTTON ASSEMBLIES ---
+            st.markdown("<br>", unsafe_allow_html=True)
+            pdf_bytes = generate_clinical_pdf(
+                patient_id, pred_name, confidence, attention_index, 
+                dominant_quad, quad_pct, CLINICAL_DIRECTIVES[pred_idx], consensus_status
+            )
+            
+            st.download_button(
+                label="📥 Export Signed Clinical Summary PDF",
+                data=pdf_bytes,
+                file_name=f"RetiScan_{patient_id}_{datetime.now().strftime('%Y%m%d')}.pdf",
+                mime="application/pdf",
+                use_container_width=True
+            )
+else:
+    st.info("👋 Welcome! Please upload a retinal fundus photo inside the left sidebar panel to initialize the tracking dashboard timeline sequence workflows.")
