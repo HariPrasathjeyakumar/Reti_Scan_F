@@ -3,3 +3,4 @@ opencv-python-headless
 matplotlib
 numpy
 gdown
+fpdf2>=2.7.0
