@@ -365,28 +365,22 @@ if model_loaded:
             gradcam_rgb = cv2.cvtColor(gradcam_blend, cv2.COLOR_BGR2RGB)
             boundary_rgb = cv2.cvtColor(boundary_img, cv2.COLOR_BGR2RGB)
             
-            # === ROW 1: IMAGING HORIZONTAL PANEL ===
-            st.markdown("<h4 style='color: #8b949e; font-size:13px; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;'>Multi-Panel Diagnostic Worksheet Trackers</h4>", unsafe_allow_html=True)
-            img_col1, img_col2, img_col3, img_col4, img_col5 = st.columns(5, gap="medium")
+            # === ROW 1: PRIMARY DIAGNOSTIC VISUALS ===
+            st.markdown("<h4 style='color: #8b949e; font-size:13px; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;'>Primary Diagnostic Trackers</h4>", unsafe_allow_html=True)
+            
+            # Reduce to 3 main columns for a cleaner, wider layout
+            img_col1, img_col2, img_col3 = st.columns(3, gap="large")
             
             with img_col1:
                 st.markdown("<span style='color: #8b949e; font-size: 11px; text-transform: uppercase; font-weight:600;'>I. Base Input</span>", unsafe_allow_html=True)
                 st.image(img_rgb, use_container_width=True)
                 
             with img_col2:
-                st.markdown("<span style='color: #8b949e; font-size: 11px; text-transform: uppercase; font-weight:600;'>II. Vascular Topology Map</span>", unsafe_allow_html=True)
-                st.image(vessel_map, use_container_width=True, clamp=True)
-                
-            with img_col3:
-                st.markdown("<span style='color: #8b949e; font-size: 11px; text-transform: uppercase; font-weight:600;'>III. Grad-CAM Path Map</span>", unsafe_allow_html=True)
+                st.markdown("<span style='color: #8b949e; font-size: 11px; text-transform: uppercase; font-weight:600;'>II. Grad-CAM Path Map</span>", unsafe_allow_html=True)
                 st.image(gradcam_rgb, use_container_width=True)
                 
-            with img_col4:
-                st.markdown(f"<span style='color: #00FFFF; font-size: 11px; text-transform: uppercase; font-weight:600;'>IV. AI Focus ({attention_index:.1f} Index)</span>", unsafe_allow_html=True)
-                st.image(boundary_rgb, use_container_width=True)
-                
-            with img_col5:
-                st.markdown("<span style='color: #38bdf8; font-size: 11px; text-transform: uppercase; font-weight:600;'>V. Diagnostics Forecast</span>", unsafe_allow_html=True)
+            with img_col3:
+                st.markdown("<span style='color: #38bdf8; font-size: 11px; text-transform: uppercase; font-weight:600;'>III. Diagnostics Forecast</span>", unsafe_allow_html=True)
                 fig, ax = plt.subplots(figsize=(4, 3.5))
                 
                 visit_stamps = [r["timestamp"].split(" ")[0] for r in record_logs]
@@ -421,6 +415,16 @@ if model_loaded:
                 ax.tick_params(colors='#8b949e', labelsize=8)
                 st.pyplot(fig)
                 plt.close(fig)
+
+            # === ON-DEMAND EXPANDER FOR SECONDARY VISUALS ===
+            with st.expander("🔍 View Advanced Technical Layers (Vascular & AI ROI Focus)"):
+                adv_col1, adv_col2 = st.columns(2, gap="medium")
+                with adv_col1:
+                    st.markdown("<span style='color: #8b949e; font-size: 11px; text-transform: uppercase; font-weight:600;'>Vascular Topology Map</span>", unsafe_allow_html=True)
+                    st.image(vessel_map, use_container_width=True, clamp=True)
+                with adv_col2:
+                    st.markdown(f"<span style='color: #00FFFF; font-size: 11px; text-transform: uppercase; font-weight:600;'>AI ROI Bounding Boxes ({attention_index:.1f} Index)</span>", unsafe_allow_html=True)
+                    st.image(boundary_rgb, use_container_width=True)
 
             # === ROW 2: DIAGNOSTIC MATRIX SUMMARY ===
             st.markdown("<br><h4 style='color: #8b949e; font-size:13px; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;'>Classification & Metrics Summary</h4>", unsafe_allow_html=True)
