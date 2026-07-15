@@ -12,7 +12,33 @@ from fpdf import FPDF
 from skimage.filters import frangi # Mathematical vascular extraction
 
 # Set page configurations to clean wide layout
-st.set_page_config(page_title="RetiScan Pro v5", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(
+    page_title="RetiScan Pro v5 Dashboard", 
+    layout="wide", 
+    initial_sidebar_state="expanded"
+)
+
+# Premium Global Styles Theme Hook
+st.markdown("""
+    <style>
+    .main {
+        background-color: #0d1117;
+    }
+    div[data-testid="stSidebar"] {
+        background-color: #161b22;
+        border-right: 1px solid #30363d;
+    }
+    .stExpander {
+        background-color: #161b22 !important;
+        border: 1px solid #30363d !important;
+        border-radius: 6px;
+        margin-top: 15px;
+    }
+    div[data-testid="stBlock"] {
+        border-radius: 8px;
+    }
+    </style>
+""", unsafe_allow_html=True)
 
 # =====================================================================
 #  1. CONSTANTS, CLOUD PATHS, & CORE METADATA
@@ -149,7 +175,6 @@ def generate_clinical_pdf(p_id, verdict, conf, attn_idx, quad, quad_pct, directi
     pdf.cell(0, 10, "RETISCAN PRO DIAGNOSTIC SUMMARY REPORT", ln=True, align="C")
     pdf.ln(10)
     
-    # Using the exact same IST calculation configuration for report verification parity
     ist_timezone = pytz.timezone('Asia/Kolkata')
     current_time_ist = datetime.now(ist_timezone).strftime("%Y-%m-%d %H:%M")
     
@@ -180,12 +205,10 @@ def run_pre_computing_screening(img_bgr):
     h, w, _ = img_bgr.shape
     gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
     
-    # 1. IQA Blur Gate
     blur_score = cv2.Laplacian(gray, cv2.CV_64F).var()
     if blur_score < 45.0:
         return False, f"REJECTED: Asset fails focal clarity standards (Blur Variance: {blur_score:.1f}). Please recapture.", None, None, None
 
-    # 2. Geometry & Luminance Checks
     mean_brightness = np.mean(gray)
     if mean_brightness < 10:
         return False, "REJECTED: Low asset luminance exposure (Image too dark).", None, None, None
@@ -205,7 +228,6 @@ def run_pre_computing_screening(img_bgr):
         
     (x_center, y_center), radius = cv2.minEnclosingCircle(largest_contour)
     
-    # 3. Biological Pigmentation Gate
     circle_mask = np.zeros((h, w), dtype=np.uint8)
     cv2.circle(circle_mask, (int(x_center), int(y_center)), int(radius * 0.8), 255, -1)
     
@@ -307,24 +329,10 @@ def compute_diagnostic_graphs(img_tensor, grad_model, pred_idx, img_bgr, x_cente
 # =====================================================================
 #  4. USER INTERFACE GRAPHICS RENDERING CANVAS
 # =====================================================================
-st.markdown("<h2 style='text-align: center; color: #34d399; font-weight:700;'>🔬 RetiScan Pro v5 Dashboard</h2>", unsafe_allow_html=True)
+st.markdown("<h1 style='color: #58a6ff; font-weight: 400; margin-bottom: 20px;'>🔬 RetiScan Pro v5 Dashboard</h1>", unsafe_allow_html=True)
 
-st.markdown("""
-<style>
-    div[data-testid="stColumn"] {
-        background: #161b22 !important;
-        border: 1px solid #30363d !important;
-        border-radius: 12px;
-        padding: 15px !important;
-    }
-    .stProgress > div > div > div > div {
-        background-color: #ff9800 !important;
-    }
-</style>
-""", unsafe_allow_html=True)
-
-st.sidebar.title("🩺 Clinical Control Hub")
-st.sidebar.markdown("---")
+# Sidebar UI Styling Customization
+st.sidebar.markdown("<h2 style='color: #8b949e; font-weight: 300; margin-bottom: 20px;'>🩺 Clinical Control Hub</h2>", unsafe_allow_html=True)
 patient_id = st.sidebar.text_input("👤 Patient ID Key", value="PATIENT-601").strip().upper()
 
 if model_loaded:
@@ -370,10 +378,11 @@ if model_loaded:
             gradcam_rgb = cv2.cvtColor(gradcam_blend, cv2.COLOR_BGR2RGB)
             boundary_rgb = cv2.cvtColor(boundary_img, cv2.COLOR_BGR2RGB)
             
-            # === ROW 1: PRIMARY DIAGNOSTIC VISUALS ===
-            st.markdown("<h4 style='color: #8b949e; font-size:13px; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;'>Primary Diagnostic Trackers</h4>", unsafe_allow_html=True)
+            st.markdown("---")
             
-            # Reduce to 3 main columns for a cleaner, wider layout
+            # === ROW 1: PRIMARY DIAGNOSTIC VISUALS (CLEAN 3-COLUMN STRUCTURE) ===
+            st.markdown("<h4 style='color: #8b949e; font-size:13px; text-transform:uppercase; letter-spacing:1px; margin-bottom:15px;'>Primary Diagnostic Trackers</h4>", unsafe_allow_html=True)
+            
             img_col1, img_col2, img_col3 = st.columns(3, gap="large")
             
             with img_col1:
@@ -385,7 +394,7 @@ if model_loaded:
                 st.image(gradcam_rgb, use_container_width=True)
                 
             with img_col3:
-                st.markdown("<span style='color: #38bdf8; font-size: 11px; text-transform: uppercase; font-weight:600;'>III. Diagnostics Forecast</span>", unsafe_allow_html=True)
+                st.markdown("<span style='color: #38bdf8; font-size: 11px; text-transform: uppercase; font-weight:600;'>III. Diagnostics Forecast (Longitudinal)</span>", unsafe_allow_html=True)
                 fig, ax = plt.subplots(figsize=(4, 3.5))
                 
                 visit_stamps = [r["timestamp"].split(" ")[0] for r in record_logs]
@@ -412,39 +421,47 @@ if model_loaded:
                 extended_stamps = visit_stamps + ["(Next)"] if len(record_logs) >= 2 else visit_stamps
                 ax.set_xticklabels(extended_stamps, rotation=25, ha='right', fontsize=8)
                 ax.set_ylim(-5, 105)
-                ax.grid(True, linestyle='--', alpha=0.4)
+                ax.grid(True, linestyle='--', alpha=0.2, color='#8b949e')
+                
+                # Dark Theme Style Fixes for Matplotlib
                 fig.patch.set_facecolor('#161b22')
                 ax.set_facecolor('#0d1117')
-                ax.spines['bottom'].set_color('#8b949e')
-                ax.spines['left'].set_color('#8b949e')
+                ax.spines['bottom'].set_color('#30363d')
+                ax.spines['left'].set_color('#30363d')
+                ax.spines['top'].set_visible(False)
+                ax.spines['right'].set_visible(False)
                 ax.tick_params(colors='#8b949e', labelsize=8)
                 st.pyplot(fig)
                 plt.close(fig)
 
-            # === ON-DEMAND EXPANDER FOR SECONDARY VISUALS ===
-            with st.expander("🔍 View Advanced Technical Layers (Vascular & AI ROI Focus)"):
+            # === ON-DEMAND EXPANDER PANEL FOR TECHNICAL LAYERS ===
+            with st.expander("🔍 View Advanced Technical Layers (Vascular Topology & AI ROI Focus)"):
                 adv_col1, adv_col2 = st.columns(2, gap="medium")
                 with adv_col1:
                     st.markdown("<span style='color: #8b949e; font-size: 11px; text-transform: uppercase; font-weight:600;'>Vascular Topology Map</span>", unsafe_allow_html=True)
                     st.image(vessel_map, use_container_width=True, clamp=True)
                 with adv_col2:
-                    st.markdown(f"<span style='color: #00FFFF; font-size: 11px; text-transform: uppercase; font-weight:600;'>AI ROI Bounding Boxes ({attention_index:.1f} Index)</span>", unsafe_allow_html=True)
+                    st.markdown(f"<span style='color: #38bdf8; font-size: 11px; text-transform: uppercase; font-weight:600;'>AI ROI Bounding Boxes ({attention_index:.1f} Index)</span>", unsafe_allow_html=True)
                     st.image(boundary_rgb, use_container_width=True)
 
-            # === ROW 2: DIAGNOSTIC MATRIX SUMMARY ===
-            st.markdown("<br><h4 style='color: #8b949e; font-size:13px; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;'>Classification & Metrics Summary</h4>", unsafe_allow_html=True)
-            data_col1, data_col2 = st.columns([1, 1], gap="medium")
+            # === ROW 2: DIAGNOSTIC MATRIX SUMMARY CARD ENGINE ===
+            st.markdown("<br><h4 style='color: #8b949e; font-size:13px; text-transform:uppercase; letter-spacing:1px; margin-bottom:15px;'>Classification & Metrics Summary</h4>", unsafe_allow_html=True)
+            data_col1, data_col2 = st.columns(2, gap="large")
             
             with data_col1:
-                st.markdown("<span style='color: #8b949e; font-size: 11px; text-transform: uppercase; font-weight:600;'>Diagnostic Verdict</span>", unsafe_allow_html=True)
-                st.markdown(f"<div style='font-size: 32px; font-weight: 700; color: {accent_color}; margin-top:5px;'>{pred_name}</div>", unsafe_allow_html=True)
-                st.markdown(f"<div style='font-size: 12px; color: #8b949e; margin-bottom:12px;'>Integrity Consensus Validation: <b style='color:#38bdf8;'>{consensus_status}</b></div>", unsafe_allow_html=True)
-                st.markdown(f"<div style='font-size: 14px; color: #8b949e; margin-bottom:12px;'>Confidence: {confidence:.2f}% | Attention Intensity Score: {attention_index:.1f}%</div>", unsafe_allow_html=True)
-                st.markdown(f"<div style='font-size: 14px; line-height:1.5; color:#c9d1d9;'>{CLASS_DESCRIPTIONS[pred_idx]}</div>", unsafe_allow_html=True)
+                st.markdown(f"""
+                    <div style="background-color: #161b22; padding: 22px; border-radius: 6px; border: 1px solid #30363d; height: 100%;">
+                        <p style="color: #8b949e; font-size: 11px; text-transform: uppercase; margin: 0; letter-spacing: 0.5px;">Diagnostic Verdict</p>
+                        <h1 style="color: {accent_color}; margin: 10px 0 5px 0; font-size: 38px; font-weight: 500;">{pred_name}</h1>
+                        <p style="color: #58a6ff; font-size: 12px; margin-bottom: 12px; font-weight: 500;">Integrity Consensus Validation: {consensus_status}</p>
+                        <p style="color: #8b949e; font-size: 12px; margin: 0;">Confidence: <b>{confidence:.2f}%</b> | Attention Intensity Score: <b>{attention_index:.1f}%</b></p>
+                        <p style="color: #c9d1d9; font-size: 13.5px; margin-top: 10px; line-height: 1.45;">{CLASS_DESCRIPTIONS[pred_idx]}</p>
+                    </div>
+                """, unsafe_allow_html=True)
                 
             with data_col2:
-                st.markdown("<span style='color: #8b949e; font-size: 11px; text-transform: uppercase; font-weight:600;'>Grade Probabilities Matrix</span>", unsafe_allow_html=True)
-                st.markdown("<div style='margin-top: 5px;'></div>", unsafe_allow_html=True)
+                st.markdown("<div style='background-color: #161b22; padding: 22px; border-radius: 6px; border: 1px solid #30363d; height: 100%;'>", unsafe_allow_html=True)
+                st.markdown("<p style='color: #8b949e; font-size: 11px; text-transform: uppercase; margin: 0 0 15px 0; letter-spacing: 0.5px;'>Grade Probabilities Matrix</p>", unsafe_allow_html=True)
                 for i in range(NUM_CLASSES):
                     cname = CLASS_NAMES[i]
                     pct = float(probabilities[i])
@@ -452,6 +469,7 @@ if model_loaded:
                     label_color = "#ffffff" if is_pred else "#8b949e"
                     st.markdown(f"<div style='font-size: 12px; color: {label_color}; display: flex; justify-content: space-between; font-weight:500; margin-bottom:2px;'><span>{cname}</span><span>{pct*100:.1f}%</span></div>", unsafe_allow_html=True)
                     st.progress(pct)
+                st.markdown("</div>", unsafe_allow_html=True)
 
             # === ROW 3: EXPLAINABLE AI BANNERS WITH PREDICTIVE TRACKING ===
             st.markdown("<br>", unsafe_allow_html=True)
@@ -467,7 +485,7 @@ if model_loaded:
                         xai_text += " Longitudinal tracking denotes a stabilized tracking vector path distribution."
 
             st.markdown(f"""
-            <div style="background: #1f152d; border: 1px solid #4c297a; border-radius: 12px; padding: 18px; display: flex; gap: 14px; margin-bottom:15px;">
+            <div style="background: #1f152d; border: 1px solid #4c297a; border-radius: 6px; padding: 18px; display: flex; gap: 14px; margin-bottom:15px;">
                 <div style="font-size: 22px; margin-top:-2px;">🧠</div>
                 <div>
                     <div style="font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #d6adff; font-weight: 600; margin-bottom: 4px;">Dynamic XAI & Predictive Prognostics</div>
@@ -477,7 +495,7 @@ if model_loaded:
             """, unsafe_allow_html=True)
             
             st.markdown(f"""
-            <div style="background: #1b1c16; border: 1px solid #4d4617; border-radius: 12px; padding: 18px; display: flex; gap: 14px; margin-bottom:25px;">
+            <div style="background: #1b1c16; border: 1px solid #4d4617; border-radius: 6px; padding: 18px; display: flex; gap: 14px; margin-bottom:25px;">
                 <div style="font-size: 22px; margin-top:-2px;">📋</div>
                 <div>
                     <div style="font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #e2da9a; font-weight: 600; margin-bottom: 4px;">Clinical Management Directive</div>
@@ -487,9 +505,9 @@ if model_loaded:
             """, unsafe_allow_html=True)
 
             # === ROW 4: DATA PAYLOAD LOGGING TABLE ===
-            st.subheader(f"📋 Historical Tracking Summary Log ({patient_id})")
+            st.markdown(f"<h4 style='color: #8b949e; font-size:14px; margin-bottom:12px;'>📋 Historical Tracking Summary Log ({patient_id})</h4>", unsafe_allow_html=True)
             
-            table_html = '<table style="width:100%; text-align:left; border-collapse:collapse; font-size:14px; background:#161b22; border:1px solid #30363d; border-radius:8px;">'
+            table_html = '<table style="width:100%; text-align:left; border-collapse:collapse; font-size:14px; background:#161b22; border:1px solid #30363d; border-radius:6px;">'
             table_html += '<thead><tr style="border-bottom:2px solid #30363d; color:#8b949e; background:#0d1117;">'
             table_html += '<th style="padding:12px;">Visit Index</th>'
             table_html += '<th style="padding:12px;">Timestamp</th>'
@@ -529,4 +547,4 @@ if model_loaded:
                 use_container_width=True
             )
 else:
-    st.info("👋 Welcome! Please upload a retinal fundus photo inside the left sidebar panel to initialize the tracking dashboard timeline sequence workflows.")
+    st.info("👈 Complete the entry inputs in the Clinical Control Hub sidebar to initialize data processing pathways.")
