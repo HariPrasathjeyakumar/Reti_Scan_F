@@ -5,3 +5,5 @@ numpy
 gdown
 fpdf2>=2.7.0
 scikit-image>=0.21.0
+firebase-admin==6.5.0
+pytz==2024.1
