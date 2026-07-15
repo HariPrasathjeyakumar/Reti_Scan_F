@@ -6,6 +6,7 @@ import os
 import gdown
 import json
 import matplotlib.pyplot as plt
+import pytz
 from datetime import datetime
 from fpdf import FPDF
 from skimage.filters import frangi # Mathematical vascular extraction
@@ -101,8 +102,13 @@ def load_patient_history():
 def save_patient_record(p_id, diagnosis, confidence, attention_index):
     history = load_patient_history()
     if p_id not in history: history[p_id] = []
+    
+    # Timezone alignment: Force conversion to Indian Standard Time (IST)
+    ist_timezone = pytz.timezone('Asia/Kolkata')
+    current_time_ist = datetime.now(ist_timezone).strftime("%Y-%m-%d %H:%M")
+    
     new_entry = {
-        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M"),
+        "timestamp": current_time_ist,
         "diagnosis": diagnosis,
         "confidence": round(float(confidence), 2),
         "attention_index": round(float(attention_index), 2)
@@ -143,10 +149,14 @@ def generate_clinical_pdf(p_id, verdict, conf, attn_idx, quad, quad_pct, directi
     pdf.cell(0, 10, "RETISCAN PRO DIAGNOSTIC SUMMARY REPORT", ln=True, align="C")
     pdf.ln(10)
     
+    # Using the exact same IST calculation configuration for report verification parity
+    ist_timezone = pytz.timezone('Asia/Kolkata')
+    current_time_ist = datetime.now(ist_timezone).strftime("%Y-%m-%d %H:%M")
+    
     pdf.set_font("Helvetica", "", 12)
     pdf.set_text_color(0, 0, 0)
     pdf.cell(0, 8, f"Patient Tracking Key: {p_id}", ln=True)
-    pdf.cell(0, 8, f"Generated Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M')}", ln=True)
+    pdf.cell(0, 8, f"Generated Timestamp: {current_time_ist}", ln=True)
     pdf.cell(0, 8, f"Ensemble Integrity State: {consensus}", ln=True)
     pdf.line(10, pdf.get_y() + 2, 200, pdf.get_y() + 2)
     pdf.ln(8)
@@ -164,7 +174,6 @@ def generate_clinical_pdf(p_id, verdict, conf, attn_idx, quad, quad_pct, directi
     pdf.set_font("Helvetica", "I", 11)
     pdf.multi_cell(0, 6, directive)
     
-    # Cast to bytes to ensure Streamlit download button compatibility
     return bytes(pdf.output())
 
 def run_pre_computing_screening(img_bgr):
@@ -196,20 +205,17 @@ def run_pre_computing_screening(img_bgr):
         
     (x_center, y_center), radius = cv2.minEnclosingCircle(largest_contour)
     
-    # --- NEW: 3. Biological Pigmentation Gate ---
-    # Create a mask to only look at the inside of the circular object (ignoring the background)
+    # 3. Biological Pigmentation Gate
     circle_mask = np.zeros((h, w), dtype=np.uint8)
     cv2.circle(circle_mask, (int(x_center), int(y_center)), int(radius * 0.8), 255, -1)
     
-    # Calculate the average Blue, Green, and Red channel values inside that circle
     mean_b, mean_g, mean_r, _ = cv2.mean(img_bgr, mask=circle_mask)
     
-    # Biological retinas are highly red-dominant with very low blue reflection.
-    # If the blue channel is too high, or red isn't the dominant color, it's not a retina.
     if mean_b > 90 or mean_r < mean_g:
         return False, f"REJECTED: Biological profile mismatch. Asset lacks standard retinal pigmentation signatures (High anomalous blue/green reflection detected).", None, None, None
 
     return True, "PASSED", x_center, y_center, radius
+
 def generate_vascular_map(img_bgr, x_center, y_center, radius):
     h, w, _ = img_bgr.shape
     _, g, _ = cv2.split(img_bgr)
@@ -506,6 +512,10 @@ if model_loaded:
 
             # --- DYNAMIC EXPORT BUTTON ASSEMBLIES ---
             st.markdown("<br>", unsafe_allow_html=True)
+            
+            ist_timezone = pytz.timezone('Asia/Kolkata')
+            current_date_ist = datetime.now(ist_timezone).strftime('%Y%m%d')
+            
             pdf_bytes = generate_clinical_pdf(
                 patient_id, pred_name, confidence, attention_index, 
                 dominant_quad, quad_pct, CLINICAL_DIRECTIVES[pred_idx], consensus_status
@@ -514,7 +524,7 @@ if model_loaded:
             st.download_button(
                 label="📥 Export Signed Clinical Summary PDF",
                 data=pdf_bytes,
-                file_name=f"RetiScan_{patient_id}_{datetime.now().strftime('%Y%m%d')}.pdf",
+                file_name=f"RetiScan_{patient_id}_{current_date_ist}.pdf",
                 mime="application/pdf",
                 use_container_width=True
             )
