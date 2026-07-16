@@ -195,6 +195,30 @@ CLINICAL_DIRECTIVES = {
     4: "CRITICAL ALERT: Emergency vitreo-retinal surgical evaluation indicated. High immediate risk of permanent tractional detachment."
 }
 
+# Clinical referral mapping — Moderate NPDR and above requires specialist referral
+# (standard binary screening convention used alongside 5-class ICDR grading)
+REFERABLE_CLASSES = {2, 3, 4}
+NON_REFERABLE_CLASSES = {0, 1}
+
+MODEL_CARD = {
+    "architecture": "EfficientNetB3 (ImageNet-pretrained backbone, fine-tuned)",
+    "input_resolution": f"{IMG_SIZE} x {IMG_SIZE} RGB",
+    "training_dataset": "APTOS 2019 Blindness Detection dataset",
+    "num_classes": "5-class ICDR severity scale (No DR → Proliferative DR)",
+    "loss_function": "Categorical Crossentropy with label smoothing (focal-loss variant explored)",
+    "reported_accuracy": "~89% top-1 accuracy on held-out validation split (5-class grading)",
+    "explainability_method": "Grad-CAM (gradient-weighted class activation mapping), single convolutional layer",
+    "uncertainty_method": "Test-Time Augmentation (TTA) ensemble variance across 3 augmented views (identity, horizontal flip, gamma shift)",
+    "known_limitations": [
+        "Trained and validated on a single dataset (APTOS 2019); performance on images from other cameras/populations has not been externally verified.",
+        "Grad-CAM highlights regions correlated with the prediction — it does not guarantee the highlighted region is the true clinical lesion.",
+        "Longitudinal trend forecasting requires at least 3 visits to be statistically meaningful; earlier visits are descriptive only.",
+        "The model has not been evaluated for calibration (i.e. whether a 90% confidence score genuinely corresponds to 90% real-world accuracy).",
+        "Not a diagnostic device. Intended as a decision-support and triage aid alongside qualified clinical judgement.",
+    ],
+    "intended_use": "Screening triage support for diabetic retinopathy grading, to prioritize specialist review — not a replacement for ophthalmologist diagnosis.",
+}
+
 def focal_loss():
     def loss_fn(y_true, y_pred): return tf.reduce_mean(y_pred)
     loss_fn.__name__ = "focal_loss"
@@ -223,10 +247,10 @@ def load_retiscan_pipeline():
         conv_layer_name = "top_conv"
 
     grad_model = tf.keras.models.Model([main_model.inputs], [main_model.get_layer(conv_layer_name).output, main_model.output])
-    return main_model, grad_model
+    return main_model, grad_model, conv_layer_name
 
 try:
-    model, grad_model = load_retiscan_pipeline()
+    model, grad_model, gradcam_layer_name = load_retiscan_pipeline()
     model_loaded = True
 except Exception as e:
     st.error(f"Could not initialize or download the model file. Error: {e}")
@@ -275,11 +299,14 @@ def run_tta_ensemble_inference(model, base_tensor):
 
     fused_probabilities = (pred_base + pred_flipped + pred_gamma) / 3.0
 
-    variance = np.var([pred_base, pred_flipped, pred_gamma], axis=0)
-    mean_variance = np.mean(variance)
+    per_class_variance = np.var([pred_base, pred_flipped, pred_gamma], axis=0)
+    mean_variance = np.mean(per_class_variance)
     consensus_badge = "HIGH CONSENSUS" if mean_variance < 0.02 else "BORDERLINE VERIFICATION REQUIRED"
 
-    return fused_probabilities, consensus_badge
+    # Per-class uncertainty band expressed as +/- percentage points (std dev across TTA views)
+    per_class_uncertainty_pct = np.sqrt(per_class_variance) * 100.0
+
+    return fused_probabilities, consensus_badge, per_class_uncertainty_pct
 
 def generate_clinical_pdf(p_id, verdict, conf, attn_idx, quad, quad_pct, directive, consensus):
     pdf = FPDF()
@@ -455,6 +482,38 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # Sidebar UI Styling Customization
+with st.expander("🗂️  Model Card & Audit Trail — architecture, dataset, limitations, intended use"):
+    mc_col1, mc_col2 = st.columns(2, gap="large")
+    with mc_col1:
+        st.markdown(f"""
+        <div class="rs-card">
+            <p class="rs-subtle-label-accent" style="margin-bottom:10px;">Model Details</p>
+            <p style="font-size:13px; color:{TEXT_MAIN}; line-height:1.8; margin:0;">
+                <b>Architecture:</b> {MODEL_CARD['architecture']}<br>
+                <b>Input:</b> {MODEL_CARD['input_resolution']}<br>
+                <b>Training Data:</b> {MODEL_CARD['training_dataset']}<br>
+                <b>Task:</b> {MODEL_CARD['num_classes']}<br>
+                <b>Loss:</b> {MODEL_CARD['loss_function']}<br>
+                <b>Reported Accuracy:</b> {MODEL_CARD['reported_accuracy']}<br>
+                <b>Explainability:</b> {MODEL_CARD['explainability_method']}
+                {f" — active layer: <code>{gradcam_layer_name}</code>" if model_loaded else ""}<br>
+                <b>Uncertainty Estimate:</b> {MODEL_CARD['uncertainty_method']}
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+    with mc_col2:
+        limitations_html = "".join([f"<li style='margin-bottom:6px;'>{item}</li>" for item in MODEL_CARD["known_limitations"]])
+        st.markdown(f"""
+        <div class="rs-card">
+            <p class="rs-subtle-label-accent" style="margin-bottom:10px;">Known Limitations</p>
+            <ul style="font-size:12.5px; color:{TEXT_MAIN}; line-height:1.5; margin:0; padding-left:18px;">
+                {limitations_html}
+            </ul>
+            <p class="rs-subtle-label-accent" style="margin: 16px 0 6px 0;">Intended Use</p>
+            <p style="font-size:12.5px; color:{TEXT_MUTED}; line-height:1.5; margin:0;">{MODEL_CARD['intended_use']}</p>
+        </div>
+        """, unsafe_allow_html=True)
+
 st.sidebar.markdown(f"""
 <div style="display:flex; align-items:center; gap:8px; margin-bottom:18px;">
     <span style="font-size:20px;">🧭</span>
@@ -483,7 +542,7 @@ if model_loaded:
             img_tensor = preprocess_for_inference(img_bgr)
 
             with st.spinner("Processing Multi-Variant Ensemble Imaging Analytics..."):
-                probabilities, consensus_status = run_tta_ensemble_inference(model, img_tensor)
+                probabilities, consensus_status, class_uncertainty = run_tta_ensemble_inference(model, img_tensor)
 
             pred_idx = int(np.argmax(probabilities))
             pred_name = CLASS_NAMES[pred_idx]
@@ -529,8 +588,17 @@ if model_loaded:
 
                 ax.plot(x_indices, attention_indices, marker='o', color=ACCENT, linewidth=2.5, label='Historical')
 
-                if len(record_logs) >= 2:
+                # Trend forecasting requires >=3 visits to be statistically defensible.
+                # A 2-point "trend" is just a line between two dots, not evidence of velocity.
+                MIN_VISITS_FOR_TREND = 3
+                r_squared = None
+                if len(record_logs) >= MIN_VISITS_FOR_TREND:
                     slope, intercept = np.polyfit(x_indices, attention_indices, 1)
+                    fitted = slope * x_indices + intercept
+                    ss_res = np.sum((np.array(attention_indices) - fitted) ** 2)
+                    ss_tot = np.sum((np.array(attention_indices) - np.mean(attention_indices)) ** 2)
+                    r_squared = 1 - (ss_res / ss_tot) if ss_tot > 0 else 0.0
+
                     next_x = len(record_logs)
                     next_y_pred = max(0.0, min(100.0, slope * next_x + intercept))
 
@@ -539,12 +607,18 @@ if model_loaded:
                     ax.plot(forecast_x, forecast_y, linestyle='--', color=DANGER, linewidth=2, marker='x', label='Forecast')
                     ax.legend(facecolor=SURFACE, edgecolor=BORDER, labelcolor=TEXT_MUTED, fontsize=7)
 
-                    trajectory_alert = "ACCELERATING" if slope > 1.5 else "STABILIZED"
+                    # Require both a meaningful slope AND a reasonable fit before flagging acceleration
+                    if slope > 1.5 and r_squared >= 0.5:
+                        trajectory_alert = "ACCELERATING"
+                    elif slope > 1.5 and r_squared < 0.5:
+                        trajectory_alert = "NOISY_TREND"
+                    else:
+                        trajectory_alert = "STABILIZED"
                 else:
                     trajectory_alert = "INSUFFICIENT_TIMELINE_DATA"
 
-                ax.set_xticks(range(len(record_logs) + (1 if len(record_logs) >= 2 else 0)))
-                extended_stamps = visit_stamps + ["(Next)"] if len(record_logs) >= 2 else visit_stamps
+                ax.set_xticks(range(len(record_logs) + (1 if len(record_logs) >= MIN_VISITS_FOR_TREND else 0)))
+                extended_stamps = visit_stamps + ["(Next)"] if len(record_logs) >= MIN_VISITS_FOR_TREND else visit_stamps
                 ax.set_xticklabels(extended_stamps, rotation=25, ha='right', fontsize=8)
                 ax.set_ylim(-5, 105)
                 ax.grid(True, linestyle='--', alpha=0.2, color=TEXT_MUTED)
@@ -574,12 +648,23 @@ if model_loaded:
             st.markdown("<br><div class='rs-section-label'>Classification & Metrics Summary</div>", unsafe_allow_html=True)
             data_col1, data_col2 = st.columns(2, gap="large")
 
+            # Secondary clinical output: referable vs non-referable DR (standard screening
+            # convention — Moderate NPDR and above requires specialist referral). Derived
+            # directly from the same fused probabilities, no separate model needed.
+            referable_prob = float(np.sum([probabilities[i] for i in REFERABLE_CLASSES])) * 100.0
+            is_referable = pred_idx in REFERABLE_CLASSES
+            referral_color = DANGER if is_referable else "#3ecf8e"
+            referral_label = "REFERABLE — Specialist Review Advised" if is_referable else "NON-REFERABLE — Routine Monitoring"
+
             with data_col1:
                 st.markdown(f"""
                     <div class="rs-card">
                         <p style="color: {TEXT_MUTED}; font-size: 11px; text-transform: uppercase; margin: 0; letter-spacing: 0.5px;">Diagnostic Verdict</p>
                         <h1 style="color: {accent_color}; margin: 10px 0 6px 0; font-size: 36px; font-weight: 600;">{pred_name}</h1>
-                        <p style="color: {INFO}; font-size: 12px; margin-bottom: 14px; font-weight: 600;">✓ Ensemble Consensus: {consensus_status}</p>
+                        <p style="color: {INFO}; font-size: 12px; margin-bottom: 10px; font-weight: 600;">✓ Ensemble Consensus: {consensus_status}</p>
+                        <div style="display:inline-block; background:{referral_color}22; border:1px solid {referral_color}; color:{referral_color}; font-size:11.5px; font-weight:700; padding:5px 10px; border-radius:6px; margin-bottom:14px;">
+                            {referral_label} &nbsp;·&nbsp; {referable_prob:.1f}% referable-class probability
+                        </div>
                         <p style="color: {TEXT_MUTED}; font-size: 12.5px; margin: 0;">Confidence: <b style="color:{TEXT_MAIN};">{confidence:.2f}%</b> &nbsp;|&nbsp; Attention Intensity Score: <b style="color:{TEXT_MAIN};">{attention_index:.1f}%</b></p>
                         <p style="color: {TEXT_MAIN}; font-size: 13.5px; margin-top: 14px; line-height: 1.5;">{CLASS_DESCRIPTIONS[pred_idx]}</p>
                     </div>
@@ -591,11 +676,20 @@ if model_loaded:
                 for i in range(NUM_CLASSES):
                     cname = CLASS_NAMES[i]
                     pct = float(probabilities[i])
+                    uncertainty = float(class_uncertainty[i])
                     is_pred = (i == pred_idx)
                     label_color = TEXT_MAIN if is_pred else TEXT_MUTED
                     weight = 700 if is_pred else 500
-                    st.markdown(f"<div style='font-size: 12.5px; color: {label_color}; display: flex; justify-content: space-between; font-weight:{weight}; margin-bottom:3px;'><span>{cname}</span><span>{pct*100:.1f}%</span></div>", unsafe_allow_html=True)
+                    st.markdown(
+                        f"<div style='font-size: 12.5px; color: {label_color}; display: flex; justify-content: space-between; font-weight:{weight}; margin-bottom:3px;'>"
+                        f"<span>{cname}</span><span>{pct*100:.1f}% <span style='color:{TEXT_MUTED}; font-weight:400; font-size:11px;'>(± {uncertainty:.1f})</span></span></div>",
+                        unsafe_allow_html=True
+                    )
                     st.progress(pct)
+                st.markdown(
+                    f"<p style='color:{TEXT_MUTED}; font-size:11px; margin-top:10px; line-height:1.4;'>± values show predictive uncertainty (std. dev.) across the 3-view TTA ensemble — wider bands mean the augmented views disagreed more on that class.</p>",
+                    unsafe_allow_html=True
+                )
                 st.markdown("</div>", unsafe_allow_html=True)
 
             # === ROW 3: EXPLAINABLE AI BANNERS WITH PREDICTIVE TRACKING ===
@@ -605,13 +699,14 @@ if model_loaded:
             else:
                 xai_text = f"The structural prediction tracking matrix is primarily driven by concentrated pathology vectors localized within the <strong>{dominant_quad} quadrant</strong> (accounting for {quad_pct:.1f}% of overall visual network attention maps)."
 
-                if len(record_logs) >= 2:
-                    if trajectory_alert == "ACCELERATING":
-                        xai_text += f" <span style='color:{DANGER}; font-weight:700;'>⚠ Longitudinal tracking indicates an upward pathology velocity (+{slope:.1f}% index shift per visit). Flagged for clinician review.</span>"
-                    else:
-                        xai_text += " Longitudinal tracking denotes a stabilized tracking vector path distribution."
+                if trajectory_alert == "ACCELERATING":
+                    xai_text += f" <span style='color:{DANGER}; font-weight:700;'>⚠ Longitudinal tracking indicates an upward pathology velocity (+{slope:.1f}% index shift per visit, fit quality R²={r_squared:.2f}). Flagged for clinician review.</span>"
+                elif trajectory_alert == "NOISY_TREND":
+                    xai_text += f" <span style='color:{WARN}; font-weight:600;'>A rising trend is present (+{slope:.1f}%/visit) but the fit is weak (R²={r_squared:.2f}) — more visits are needed before this is reliable.</span>"
+                elif trajectory_alert == "STABILIZED":
+                    xai_text += " Longitudinal tracking denotes a stabilized tracking vector path distribution."
                 else:
-                    xai_text += " <span style='opacity:0.75;'>(Longitudinal trend unavailable — at least 2 visits required.)</span>"
+                    xai_text += f" <span style='opacity:0.75;'>(Longitudinal trend unavailable — at least 3 visits required, {len(record_logs)} on record.)</span>"
 
             xai_text += f" <span style='opacity:0.7; font-style:italic;'>This reflects model attention, not a confirmed clinical diagnosis.</span>"
 
