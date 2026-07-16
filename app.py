@@ -45,162 +45,166 @@ XAI_BORDER  = "#c9d8fb"
 XAI_TEXT    = "#1f3a8a"
 
 # Premium, restrained clinical theme (single CSS injection)
+# NOTE: every line below is flush against the left margin (no leading spaces).
+# If any line here starts with 4+ spaces, Streamlit's markdown parser treats it
+# as an "indented code block" and prints the raw CSS as visible text instead
+# of applying it as a stylesheet — that was the root cause of the bug.
 st.markdown(f"""
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    <style>
-    html, body, .main, [data-testid="stAppViewContainer"] {{
-        background-color: {BG} !important;
-        color: {TEXT_MAIN};
-        font-family: 'Inter', 'Segoe UI', -apple-system, sans-serif;
-    }}
-    [data-testid="stHeader"] {{
-        background-color: {BG} !important;
-    }}
-    div[data-testid="stSidebar"] {{
-        background-color: {SURFACE};
-        border-right: 1px solid {BORDER};
-    }}
-    div[data-testid="stSidebar"] * {{
-        color: {TEXT_MAIN};
-    }}
-    div[data-testid="stSidebar"] label {{
-        font-weight: 600;
-        font-size: 12.5px;
-        color: {TEXT_MUTED} !important;
-        text-transform: uppercase;
-        letter-spacing: 0.4px;
-    }}
-    .stTextInput input, .stFileUploader section {{
-        background-color: {SURFACE_ALT} !important;
-        border: 1px solid {BORDER} !important;
-        border-radius: 8px !important;
-        color: {TEXT_MAIN} !important;
-    }}
-    .stExpander {{
-        background-color: {SURFACE} !important;
-        border: 1px solid {BORDER} !important;
-        border-radius: 12px;
-        margin-top: 15px;
-        box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
-    }}
-    div[data-testid="stBlock"] {{ border-radius: 12px; }}
-    [data-testid="stMetricValue"] {{ color: {TEXT_MAIN}; }}
-    .stProgress > div > div {{ background-color: {ACCENT} !important; }}
-    .stDownloadButton button {{
-        background-color: {ACCENT} !important;
-        color: #ffffff !important;
-        border: none !important;
-        border-radius: 8px !important;
-        font-weight: 600 !important;
-        padding: 10px 0 !important;
-        box-shadow: 0 2px 6px rgba(47, 93, 245, 0.25);
-    }}
-    .stDownloadButton button:hover {{
-        background-color: {ACCENT_DARK} !important;
-    }}
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+html, body, .main, [data-testid="stAppViewContainer"] {{
+background-color: {BG} !important;
+color: {TEXT_MAIN};
+font-family: 'Inter', 'Segoe UI', -apple-system, sans-serif;
+}}
+[data-testid="stHeader"] {{
+background-color: {BG} !important;
+}}
+div[data-testid="stSidebar"] {{
+background-color: {SURFACE};
+border-right: 1px solid {BORDER};
+}}
+div[data-testid="stSidebar"] * {{
+color: {TEXT_MAIN};
+}}
+div[data-testid="stSidebar"] label {{
+font-weight: 600;
+font-size: 12.5px;
+color: {TEXT_MUTED} !important;
+text-transform: uppercase;
+letter-spacing: 0.4px;
+}}
+.stTextInput input, .stFileUploader section {{
+background-color: {SURFACE_ALT} !important;
+border: 1px solid {BORDER} !important;
+border-radius: 8px !important;
+color: {TEXT_MAIN} !important;
+}}
+.stExpander {{
+background-color: {SURFACE} !important;
+border: 1px solid {BORDER} !important;
+border-radius: 12px;
+margin-top: 15px;
+box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+}}
+div[data-testid="stBlock"] {{ border-radius: 12px; }}
+[data-testid="stMetricValue"] {{ color: {TEXT_MAIN}; }}
+.stProgress > div > div {{ background-color: {ACCENT} !important; }}
+.stDownloadButton button {{
+background-color: {ACCENT} !important;
+color: #ffffff !important;
+border: none !important;
+border-radius: 8px !important;
+font-weight: 600 !important;
+padding: 10px 0 !important;
+box-shadow: 0 2px 6px rgba(47, 93, 245, 0.25);
+}}
+.stDownloadButton button:hover {{
+background-color: {ACCENT_DARK} !important;
+}}
 
-    /* Section labels */
-    .rs-section-label {{
-        color: {TEXT_MAIN};
-        font-size: 13px;
-        text-transform: uppercase;
-        letter-spacing: 1px;
-        font-weight: 700;
-        margin-bottom: 16px;
-        border-left: 4px solid {ACCENT};
-        padding-left: 10px;
-    }}
-    .rs-subtle-label {{
-        color: {TEXT_MUTED};
-        font-size: 11px;
-        text-transform: uppercase;
-        letter-spacing: 0.6px;
-        font-weight: 700;
-    }}
-    .rs-subtle-label-accent {{
-        color: {ACCENT};
-        font-size: 11px;
-        text-transform: uppercase;
-        letter-spacing: 0.6px;
-        font-weight: 700;
-    }}
+/* Section labels */
+.rs-section-label {{
+color: {TEXT_MAIN};
+font-size: 13px;
+text-transform: uppercase;
+letter-spacing: 1px;
+font-weight: 700;
+margin-bottom: 16px;
+border-left: 4px solid {ACCENT};
+padding-left: 10px;
+}}
+.rs-subtle-label {{
+color: {TEXT_MUTED};
+font-size: 11px;
+text-transform: uppercase;
+letter-spacing: 0.6px;
+font-weight: 700;
+}}
+.rs-subtle-label-accent {{
+color: {ACCENT};
+font-size: 11px;
+text-transform: uppercase;
+letter-spacing: 0.6px;
+font-weight: 700;
+}}
 
-    /* Cards */
-    .rs-card {{
-        background-color: {SURFACE};
-        padding: 26px;
-        border-radius: 14px;
-        border: 1px solid {BORDER};
-        height: 100%;
-        box-shadow: 0 1px 3px rgba(16, 24, 40, 0.05), 0 1px 2px rgba(16, 24, 40, 0.03);
-    }}
-    .rs-footer-card {{
-        background-color: {SURFACE_ALT};
-        padding: 20px;
-        border-radius: 12px;
-        border: 1px solid {BORDER};
-        height: 100%;
-    }}
+/* Cards */
+.rs-card {{
+background-color: {SURFACE};
+padding: 26px;
+border-radius: 14px;
+border: 1px solid {BORDER};
+height: 100%;
+box-shadow: 0 1px 3px rgba(16, 24, 40, 0.05), 0 1px 2px rgba(16, 24, 40, 0.03);
+}}
+.rs-footer-card {{
+background-color: {SURFACE_ALT};
+padding: 20px;
+border-radius: 12px;
+border: 1px solid {BORDER};
+height: 100%;
+}}
 
-    /* Banner (generic) */
-    .rs-banner {{
-        border-radius: 12px;
-        padding: 18px 22px;
-        display: flex;
-        gap: 14px;
-        margin-bottom: 16px;
-        border: 1px solid {BORDER};
-    }}
-    .rs-banner-title {{
-        font-size: 11.5px;
-        text-transform: uppercase;
-        letter-spacing: 1px;
-        font-weight: 700;
-        margin-bottom: 6px;
-    }}
-    .rs-banner-body {{
-        font-size: 13.5px;
-        line-height: 1.65;
-    }}
+/* Banner (generic) */
+.rs-banner {{
+border-radius: 12px;
+padding: 18px 22px;
+display: flex;
+gap: 14px;
+margin-bottom: 16px;
+border: 1px solid {BORDER};
+}}
+.rs-banner-title {{
+font-size: 11.5px;
+text-transform: uppercase;
+letter-spacing: 1px;
+font-weight: 700;
+margin-bottom: 6px;
+}}
+.rs-banner-body {{
+font-size: 13.5px;
+line-height: 1.65;
+}}
 
-    /* Rejection alert */
-    .rs-reject {{
-        background: {DANGER_BG};
-        color: #7a2622;
-        padding: 18px 22px;
-        border-radius: 12px;
-        border: 1px solid {DANGER_BORDER};
-        margin-top: 15px;
-    }}
+/* Rejection alert */
+.rs-reject {{
+background: {DANGER_BG};
+color: #7a2622;
+padding: 18px 22px;
+border-radius: 12px;
+border: 1px solid {DANGER_BORDER};
+margin-top: 15px;
+}}
 
-    /* Table */
-    .rs-table {{
-        width: 100%;
-        text-align: left;
-        border-collapse: collapse;
-        font-size: 13.5px;
-        background: {SURFACE};
-        border: 1px solid {BORDER};
-        border-radius: 10px;
-        overflow: hidden;
-    }}
-    .rs-table th {{
-        padding: 12px 14px;
-        color: {TEXT_MUTED};
-        background: {SURFACE_ALT};
-        border-bottom: 1px solid {BORDER};
-        font-size: 11.5px;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-    }}
-    .rs-table td {{
-        padding: 12px 14px;
-        border-bottom: 1px solid {BORDER};
-        color: {TEXT_MAIN};
-    }}
+/* Table */
+.rs-table {{
+width: 100%;
+text-align: left;
+border-collapse: collapse;
+font-size: 13.5px;
+background: {SURFACE};
+border: 1px solid {BORDER};
+border-radius: 10px;
+overflow: hidden;
+}}
+.rs-table th {{
+padding: 12px 14px;
+color: {TEXT_MUTED};
+background: {SURFACE_ALT};
+border-bottom: 1px solid {BORDER};
+font-size: 11.5px;
+text-transform: uppercase;
+letter-spacing: 0.5px;
+}}
+.rs-table td {{
+padding: 12px 14px;
+border-bottom: 1px solid {BORDER};
+color: {TEXT_MAIN};
+}}
 
-    hr {{ border-color: {BORDER} !important; }}
-    </style>
+hr {{ border-color: {BORDER} !important; }}
+</style>
 """, unsafe_allow_html=True)
 
 # =====================================================================
