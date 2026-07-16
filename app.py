@@ -9,34 +9,148 @@ import matplotlib.pyplot as plt
 import pytz
 from datetime import datetime
 from fpdf import FPDF
-from skimage.filters import frangi # Mathematical vascular extraction
+from skimage.filters import frangi  # Mathematical vascular extraction
 
 # Set page configurations to clean wide layout
 st.set_page_config(
-    page_title="RetiScan Pro v5 Dashboard", 
-    layout="wide", 
+    page_title="RetiScan Pro v5 Dashboard",
+    page_icon="🩺",
+    layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# Premium Global Styles Theme Hook
-st.markdown("""
+# =====================================================================
+#  0. DESIGN TOKENS — single source of truth for the clinical theme
+# =====================================================================
+BG          = "#0b0f14"
+SURFACE     = "#121821"
+SURFACE_ALT = "#0e141c"
+BORDER      = "#232c38"
+TEXT_MAIN   = "#e6edf3"
+TEXT_MUTED  = "#8b96a5"
+ACCENT      = "#4fd1c5"     # teal — primary clinical accent (calmer than neon blue)
+ACCENT_SOFT = "#a7f3ec"
+INFO        = "#5b9bd5"
+WARN        = "#e8b64c"
+DANGER      = "#e56a6a"
+DANGER_BG   = "#241012"
+
+# Premium, restrained clinical theme (single CSS injection)
+st.markdown(f"""
     <style>
-    .main {
-        background-color: #0d1117;
-    }
-    div[data-testid="stSidebar"] {
-        background-color: #161b22;
-        border-right: 1px solid #30363d;
-    }
-    .stExpander {
-        background-color: #161b22 !important;
-        border: 1px solid #30363d !important;
-        border-radius: 6px;
+    html, body, .main {{
+        background-color: {BG};
+        color: {TEXT_MAIN};
+        font-family: 'Segoe UI', -apple-system, sans-serif;
+    }}
+    div[data-testid="stSidebar"] {{
+        background-color: {SURFACE_ALT};
+        border-right: 1px solid {BORDER};
+    }}
+    div[data-testid="stSidebar"] * {{
+        color: {TEXT_MAIN};
+    }}
+    .stExpander {{
+        background-color: {SURFACE} !important;
+        border: 1px solid {BORDER} !important;
+        border-radius: 10px;
         margin-top: 15px;
-    }
-    div[data-testid="stBlock"] {
-        border-radius: 8px;
-    }
+    }}
+    div[data-testid="stBlock"] {{ border-radius: 10px; }}
+
+    /* Section labels */
+    .rs-section-label {{
+        color: {TEXT_MUTED};
+        font-size: 11.5px;
+        text-transform: uppercase;
+        letter-spacing: 1.2px;
+        font-weight: 700;
+        margin-bottom: 14px;
+        border-left: 3px solid {ACCENT};
+        padding-left: 8px;
+    }}
+    .rs-subtle-label {{
+        color: {TEXT_MUTED};
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.6px;
+        font-weight: 600;
+    }}
+    .rs-subtle-label-accent {{
+        color: {ACCENT};
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.6px;
+        font-weight: 700;
+    }}
+
+    /* Cards */
+    .rs-card {{
+        background-color: {SURFACE};
+        padding: 24px;
+        border-radius: 12px;
+        border: 1px solid {BORDER};
+        height: 100%;
+    }}
+
+    /* Banner (generic) */
+    .rs-banner {{
+        border-radius: 10px;
+        padding: 18px 20px;
+        display: flex;
+        gap: 14px;
+        margin-bottom: 16px;
+        border: 1px solid {BORDER};
+    }}
+    .rs-banner-title {{
+        font-size: 11.5px;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        font-weight: 700;
+        margin-bottom: 5px;
+    }}
+    .rs-banner-body {{
+        font-size: 13.5px;
+        line-height: 1.55;
+    }}
+
+    /* Rejection alert */
+    .rs-reject {{
+        background: {DANGER_BG};
+        color: #f3b4b4;
+        padding: 18px 20px;
+        border-radius: 10px;
+        border: 1px solid #5c2626;
+        margin-top: 15px;
+    }}
+
+    /* Table */
+    .rs-table {{
+        width: 100%;
+        text-align: left;
+        border-collapse: collapse;
+        font-size: 13.5px;
+        background: {SURFACE};
+        border: 1px solid {BORDER};
+        border-radius: 10px;
+        overflow: hidden;
+    }}
+    .rs-table th {{
+        padding: 12px 14px;
+        color: {TEXT_MUTED};
+        background: {SURFACE_ALT};
+        border-bottom: 1px solid {BORDER};
+        font-size: 11.5px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }}
+    .rs-table td {{
+        padding: 12px 14px;
+        border-bottom: 1px solid {BORDER};
+        color: {TEXT_MAIN};
+    }}
+
+    hr {{ border-color: {BORDER} !important; }}
     </style>
 """, unsafe_allow_html=True)
 
@@ -58,11 +172,11 @@ CLASS_NAMES = {
 }
 
 SEVERITY_COLOR = {
-    "No DR":           "#10b981",
-    "Mild NPDR":       "#f59e0b",
-    "Moderate NPDR":   "#3b82f6",
-    "Severe NPDR":     "#f97316",
-    "Proliferative DR": "#ef4444"
+    "No DR":            "#3ecf8e",
+    "Mild NPDR":         "#e8b64c",
+    "Moderate NPDR":     "#5b9bd5",
+    "Severe NPDR":       "#e8823f",
+    "Proliferative DR":  "#e5555a",
 }
 
 CLASS_DESCRIPTIONS = {
@@ -94,20 +208,20 @@ def load_retiscan_pipeline():
     if not os.path.exists(MODEL_FILENAME):
         with st.spinner("Downloading trained model weights from secure cloud storage..."):
             gdown.download(id=FILE_ID, output=MODEL_FILENAME, quiet=False)
-             
+
     if not os.path.exists(MODEL_FILENAME) or os.path.getsize(MODEL_FILENAME) < 1000000:
         raise FileNotFoundError("The model file downloaded is corrupted or empty.")
-        
+
     main_model = tf.keras.models.load_model(MODEL_FILENAME, custom_objects={"focal_loss": focal_loss()})
-    
+
     conv_layer_name = None
     for layer in reversed(main_model.layers):
         if isinstance(layer, tf.keras.layers.Conv2D) or 'top_conv' in layer.name or 'block7' in layer.name:
             conv_layer_name = layer.name
             break
-    if not conv_layer_name: 
+    if not conv_layer_name:
         conv_layer_name = "top_conv"
-        
+
     grad_model = tf.keras.models.Model([main_model.inputs], [main_model.get_layer(conv_layer_name).output, main_model.output])
     return main_model, grad_model
 
@@ -128,11 +242,11 @@ def load_patient_history():
 def save_patient_record(p_id, diagnosis, confidence, attention_index):
     history = load_patient_history()
     if p_id not in history: history[p_id] = []
-    
+
     # Timezone alignment: Force conversion to Indian Standard Time (IST)
     ist_timezone = pytz.timezone('Asia/Kolkata')
     current_time_ist = datetime.now(ist_timezone).strftime("%Y-%m-%d %H:%M")
-    
+
     new_entry = {
         "timestamp": current_time_ist,
         "diagnosis": diagnosis,
@@ -158,13 +272,13 @@ def run_tta_ensemble_inference(model, base_tensor):
     pred_flipped = model.predict_on_batch(flipped_tensor)[0]
     gamma_tensor = np.clip(base_tensor * 1.05, 0.0, 255.0)
     pred_gamma = model.predict_on_batch(gamma_tensor)[0]
-    
+
     fused_probabilities = (pred_base + pred_flipped + pred_gamma) / 3.0
-    
+
     variance = np.var([pred_base, pred_flipped, pred_gamma], axis=0)
     mean_variance = np.mean(variance)
     consensus_badge = "HIGH CONSENSUS" if mean_variance < 0.02 else "BORDERLINE VERIFICATION REQUIRED"
-    
+
     return fused_probabilities, consensus_badge
 
 def generate_clinical_pdf(p_id, verdict, conf, attn_idx, quad, quad_pct, directive, consensus):
@@ -174,10 +288,10 @@ def generate_clinical_pdf(p_id, verdict, conf, attn_idx, quad, quad_pct, directi
     pdf.set_text_color(16, 185, 129)
     pdf.cell(0, 10, "RETISCAN PRO DIAGNOSTIC SUMMARY REPORT", ln=True, align="C")
     pdf.ln(10)
-    
+
     ist_timezone = pytz.timezone('Asia/Kolkata')
     current_time_ist = datetime.now(ist_timezone).strftime("%Y-%m-%d %H:%M")
-    
+
     pdf.set_font("Helvetica", "", 12)
     pdf.set_text_color(0, 0, 0)
     pdf.cell(0, 8, f"Patient Tracking Key: {p_id}", ln=True)
@@ -185,7 +299,7 @@ def generate_clinical_pdf(p_id, verdict, conf, attn_idx, quad, quad_pct, directi
     pdf.cell(0, 8, f"Ensemble Integrity State: {consensus}", ln=True)
     pdf.line(10, pdf.get_y() + 2, 200, pdf.get_y() + 2)
     pdf.ln(8)
-    
+
     pdf.set_font("Helvetica", "B", 14)
     pdf.cell(0, 10, f"Diagnostic Conclusion: {verdict}", ln=True)
     pdf.set_font("Helvetica", "", 12)
@@ -193,18 +307,18 @@ def generate_clinical_pdf(p_id, verdict, conf, attn_idx, quad, quad_pct, directi
     pdf.cell(0, 8, f"AI Neuro-Attention Mapping Index: {attn_idx:.1f}%", ln=True)
     pdf.cell(0, 8, f"Dominant Pathology Cluster: {quad} Quadrant ({quad_pct:.1f}% Focus)", ln=True)
     pdf.ln(5)
-    
+
     pdf.set_font("Helvetica", "B", 12)
     pdf.cell(0, 8, "Official Management Protocol Directive:", ln=True)
     pdf.set_font("Helvetica", "I", 11)
     pdf.multi_cell(0, 6, directive)
-    
+
     return bytes(pdf.output())
 
 def run_pre_computing_screening(img_bgr):
     h, w, _ = img_bgr.shape
     gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
-    
+
     blur_score = cv2.Laplacian(gray, cv2.CV_64F).var()
     if blur_score < 45.0:
         return False, f"REJECTED: Asset fails focal clarity standards (Blur Variance: {blur_score:.1f}). Please recapture.", None, None, None
@@ -212,27 +326,27 @@ def run_pre_computing_screening(img_bgr):
     mean_brightness = np.mean(gray)
     if mean_brightness < 10:
         return False, "REJECTED: Low asset luminance exposure (Image too dark).", None, None, None
-        
+
     _, thresh = cv2.threshold(gray, 15, 255, cv2.THRESH_BINARY)
     contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    
+
     if not contours:
         return False, "REJECTED: Geometry unverified. No structural contour field found.", None, None, None
-        
+
     largest_contour = max(contours, key=cv2.contourArea)
     contour_area = cv2.contourArea(largest_contour)
     total_area = h * w
-    
+
     if contour_area < (total_area * 0.15):
         return False, "REJECTED: Geometry unverified. Extracted fundus structure area is too small.", None, None, None
-        
+
     (x_center, y_center), radius = cv2.minEnclosingCircle(largest_contour)
-    
+
     circle_mask = np.zeros((h, w), dtype=np.uint8)
     cv2.circle(circle_mask, (int(x_center), int(y_center)), int(radius * 0.8), 255, -1)
-    
+
     mean_b, mean_g, mean_r, _ = cv2.mean(img_bgr, mask=circle_mask)
-    
+
     if mean_b > 90 or mean_r < mean_g:
         return False, f"REJECTED: Biological profile mismatch. Asset lacks standard retinal pigmentation signatures (High anomalous blue/green reflection detected).", None, None, None
 
@@ -241,47 +355,47 @@ def run_pre_computing_screening(img_bgr):
 def generate_vascular_map(img_bgr, x_center, y_center, radius):
     h, w, _ = img_bgr.shape
     _, g, _ = cv2.split(img_bgr)
-    
+
     clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
     enhanced_g = clahe.apply(g)
     inverted_g = cv2.bitwise_not(enhanced_g)
-    
+
     vesselness = frangi(inverted_g, sigmas=range(1, 4, 1), black_ridges=False)
     vesselness_norm = cv2.normalize(vesselness, None, 0, 255, cv2.NORM_MINMAX, dtype=cv2.CV_8U)
-    
+
     perfect_circle_mask = np.zeros((h, w), dtype=np.uint8)
     safe_radius = int(radius * 0.92)
     cv2.circle(perfect_circle_mask, (int(x_center), int(y_center)), safe_radius, 255, -1)
-    
+
     clean_vessel_map = cv2.bitwise_and(vesselness_norm, perfect_circle_mask)
     return clean_vessel_map
 
 def compute_diagnostic_graphs(img_tensor, grad_model, pred_idx, img_bgr, x_center, y_center, radius):
     h, w, _ = img_bgr.shape
-    
+
     with tf.GradientTape() as tape:
         conv_outputs, model_predictions = grad_model(img_tensor)
         loss = model_predictions[:, pred_idx]
-        
+
     grads = tape.gradient(loss, conv_outputs)
     pooled_grads = tf.reduce_mean(grads, axis=(0, 1, 2))
     conv_outputs = conv_outputs[0]
     heatmap = conv_outputs @ pooled_grads[..., tf.newaxis]
     heatmap = tf.squeeze(heatmap)
-    
+
     heatmap = tf.maximum(heatmap, 0)
     max_val = tf.math.reduce_max(heatmap)
     if max_val == 0: max_val = 1e-8
     raw_heatmap = (heatmap / max_val).numpy()
-    
+
     heatmap_uint8 = np.uint8(255 * raw_heatmap)
     heatmap_resized = cv2.resize(heatmap_uint8, (w, h))
-    
+
     perfect_circle_mask = np.zeros((h, w), dtype=np.uint8)
     safe_radius = int(radius * 0.80)
     cv2.circle(perfect_circle_mask, (int(x_center), int(y_center)), safe_radius, 255, -1)
     isolated_heatmap = cv2.bitwise_and(heatmap_resized, perfect_circle_mask)
-        
+
     if pred_idx == 0:
         ai_attention_index = 0.0
         boundary_img_bgr = img_bgr.copy()
@@ -296,10 +410,10 @@ def compute_diagnostic_graphs(img_tensor, grad_model, pred_idx, img_bgr, x_cente
         max_internal_val = np.max(isolated_heatmap) if np.max(isolated_heatmap) > 0 else 1
         _, binary_mask = cv2.threshold(isolated_heatmap, int(0.55 * max_internal_val), 255, cv2.THRESH_BINARY)
         lesion_contours, _ = cv2.findContours(binary_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        
+
         boundary_img_bgr = img_bgr.copy()
         mask_overlay = np.zeros_like(img_bgr)
-        
+
         for contour in lesion_contours:
             area = cv2.contourArea(contour)
             if area > 25:
@@ -307,11 +421,11 @@ def compute_diagnostic_graphs(img_tensor, grad_model, pred_idx, img_bgr, x_cente
                 cv2.drawContours(boundary_img_bgr, [contour], -1, (255, 255, 0), 1)
                 x, y, box_w, box_h = cv2.boundingRect(contour)
                 cv2.rectangle(boundary_img_bgr, (x, y), (x + box_w, y + box_h), (0, 255, 255), 2)
-                cv2.putText(boundary_img_bgr, "ROI FOCUS", (x, max(y - 8, 20)), 
+                cv2.putText(boundary_img_bgr, "ROI FOCUS", (x, max(y - 8, 20)),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 2)
-                
+
         cv2.addWeighted(mask_overlay, 0.25, boundary_img_bgr, 0.75, 0, dst=boundary_img_bgr)
-    
+
     quad_y, quad_x = int(y_center), int(x_center)
     quadrants = {
         "Upper-Left":  isolated_heatmap[0:quad_y, 0:quad_x],
@@ -323,151 +437,164 @@ def compute_diagnostic_graphs(img_tensor, grad_model, pred_idx, img_bgr, x_cente
     total_sum = np.sum(list(quad_sums.values()))
     dominant_quadrant = max(quad_sums, key=quad_sums.get) if total_sum > 0 else "Central"
     quadrant_focus_pct = (quad_sums[dominant_quadrant] / total_sum * 100) if total_sum > 0 else 0.0
-    
+
     return isolated_heatmap, boundary_img_bgr, ai_attention_index, dominant_quadrant, quadrant_focus_pct
 
 # =====================================================================
 #  4. USER INTERFACE GRAPHICS RENDERING CANVAS
 # =====================================================================
-st.markdown("<h1 style='color: #58a6ff; font-weight: 400; margin-bottom: 20px;'>🔬 RetiScan Pro v5 Dashboard</h1>", unsafe_allow_html=True)
+st.markdown(f"""
+<div style="display:flex; align-items:center; gap:14px; margin-bottom:6px;">
+    <div style="font-size:30px;">🩺</div>
+    <div>
+        <div style="color:{TEXT_MAIN}; font-size:26px; font-weight:600; line-height:1.2;">RetiScan Pro <span style="color:{ACCENT};">v5</span></div>
+        <div style="color:{TEXT_MUTED}; font-size:13px; letter-spacing:0.3px;">Diabetic Retinopathy Grading & Explainable AI Dashboard</div>
+    </div>
+</div>
+<hr style="margin: 14px 0 22px 0;">
+""", unsafe_allow_html=True)
 
 # Sidebar UI Styling Customization
-st.sidebar.markdown("<h2 style='color: #8b949e; font-weight: 300; margin-bottom: 20px;'>🩺 Clinical Control Hub</h2>", unsafe_allow_html=True)
-patient_id = st.sidebar.text_input("👤 Patient ID Key", value="PATIENT-601").strip().upper()
+st.sidebar.markdown(f"""
+<div style="display:flex; align-items:center; gap:8px; margin-bottom:18px;">
+    <span style="font-size:20px;">🧭</span>
+    <span style="color:{TEXT_MAIN}; font-weight:600; font-size:16px;">Clinical Control Hub</span>
+</div>
+""", unsafe_allow_html=True)
+patient_id = st.sidebar.text_input("Patient ID Key", value="PATIENT-601").strip().upper()
 
 if model_loaded:
     uploaded_file = st.sidebar.file_uploader("Upload Retinal Record Asset", type=["jpg", "jpeg", "png"])
-    
+
     if uploaded_file is not None:
         file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
         img_bgr = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
-        
+
         passed_screening, message, x_center, y_center, radius = run_pre_computing_screening(img_bgr)
-        
+
         if not passed_screening:
             st.markdown(f"""
-            <div style='background:#7f1d1d; color:#fca5a5; padding:18px; border-radius:8px; font-weight:bold; border: 1px solid #f87171; margin-top:15px;'>
-                ❌ SYSTEM SCREENING REJECTION: {message}<br>
-                <span style='font-size:12px; font-weight:normal;'>Pipeline terminated automatically to prevent false model classification predictions on corrupted data configurations.</span>
+            <div class='rs-reject'>
+                <b>❌ SYSTEM SCREENING REJECTION</b><br>{message}<br>
+                <span style='font-size:12px; font-weight:normal; color:#d69a9a;'>Pipeline terminated automatically to prevent false model classification predictions on corrupted data configurations.</span>
             </div>
             """, unsafe_allow_html=True)
         else:
             img_tensor = preprocess_for_inference(img_bgr)
-            
+
             with st.spinner("Processing Multi-Variant Ensemble Imaging Analytics..."):
                 probabilities, consensus_status = run_tta_ensemble_inference(model, img_tensor)
-                
+
             pred_idx = int(np.argmax(probabilities))
             pred_name = CLASS_NAMES[pred_idx]
             confidence = probabilities[pred_idx] * 100
             accent_color = SEVERITY_COLOR[pred_name]
-            
+
             isolated_heatmap, boundary_img, attention_index, dominant_quad, quad_pct = compute_diagnostic_graphs(
                 img_tensor, grad_model, pred_idx, img_bgr, x_center, y_center, radius
             )
-            
+
             with st.spinner("Mapping Vascular Topography..."):
                 vessel_map = generate_vascular_map(img_bgr, x_center, y_center, radius)
-                
+
             record_logs = save_patient_record(patient_id, pred_name, confidence, attention_index)
 
             heatmap_color = cv2.applyColorMap(isolated_heatmap, cv2.COLORMAP_JET)
             gradcam_blend = cv2.addWeighted(heatmap_color, 0.38, img_bgr, 0.62, 0)
-            
+
             img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
             gradcam_rgb = cv2.cvtColor(gradcam_blend, cv2.COLOR_BGR2RGB)
             boundary_rgb = cv2.cvtColor(boundary_img, cv2.COLOR_BGR2RGB)
-            
-            st.markdown("---")
-            
+
             # === ROW 1: PRIMARY DIAGNOSTIC VISUALS (CLEAN 3-COLUMN STRUCTURE) ===
-            st.markdown("<h4 style='color: #8b949e; font-size:13px; text-transform:uppercase; letter-spacing:1px; margin-bottom:15px;'>Primary Diagnostic Trackers</h4>", unsafe_allow_html=True)
-            
+            st.markdown("<div class='rs-section-label'>Primary Diagnostic Trackers</div>", unsafe_allow_html=True)
+
             img_col1, img_col2, img_col3 = st.columns(3, gap="large")
-            
+
             with img_col1:
-                st.markdown("<span style='color: #8b949e; font-size: 11px; text-transform: uppercase; font-weight:600;'>I. Base Input</span>", unsafe_allow_html=True)
+                st.markdown("<span class='rs-subtle-label'>I. Base Input</span>", unsafe_allow_html=True)
                 st.image(img_rgb, use_container_width=True)
-                
+
             with img_col2:
-                st.markdown("<span style='color: #8b949e; font-size: 11px; text-transform: uppercase; font-weight:600;'>II. Grad-CAM Path Map</span>", unsafe_allow_html=True)
+                st.markdown("<span class='rs-subtle-label'>II. Grad-CAM Path Map</span>", unsafe_allow_html=True)
                 st.image(gradcam_rgb, use_container_width=True)
-                
+
             with img_col3:
-                st.markdown("<span style='color: #38bdf8; font-size: 11px; text-transform: uppercase; font-weight:600;'>III. Diagnostics Forecast (Longitudinal)</span>", unsafe_allow_html=True)
+                st.markdown("<span class='rs-subtle-label-accent'>III. Diagnostics Forecast (Longitudinal)</span>", unsafe_allow_html=True)
                 fig, ax = plt.subplots(figsize=(4, 3.5))
-                
+
                 visit_stamps = [r["timestamp"].split(" ")[0] for r in record_logs]
                 attention_indices = [r["attention_index"] for r in record_logs]
                 x_indices = np.arange(len(record_logs))
-                
-                ax.plot(x_indices, attention_indices, marker='o', color='#38bdf8', linewidth=2.5, label='Historical')
-                
+
+                ax.plot(x_indices, attention_indices, marker='o', color=ACCENT, linewidth=2.5, label='Historical')
+
                 if len(record_logs) >= 2:
                     slope, intercept = np.polyfit(x_indices, attention_indices, 1)
                     next_x = len(record_logs)
                     next_y_pred = max(0.0, min(100.0, slope * next_x + intercept))
-                    
+
                     forecast_x = [x_indices[-1], next_x]
                     forecast_y = [attention_indices[-1], next_y_pred]
-                    ax.plot(forecast_x, forecast_y, linestyle='--', color='#ef4444', linewidth=2, marker='x', label='Forecast')
-                    ax.legend(facecolor='#161b22', edgecolor='#30363d', labelcolor='#8b949e', fontsize=7)
-                    
+                    ax.plot(forecast_x, forecast_y, linestyle='--', color=DANGER, linewidth=2, marker='x', label='Forecast')
+                    ax.legend(facecolor=SURFACE, edgecolor=BORDER, labelcolor=TEXT_MUTED, fontsize=7)
+
                     trajectory_alert = "ACCELERATING" if slope > 1.5 else "STABILIZED"
                 else:
                     trajectory_alert = "INSUFFICIENT_TIMELINE_DATA"
-                
+
                 ax.set_xticks(range(len(record_logs) + (1 if len(record_logs) >= 2 else 0)))
                 extended_stamps = visit_stamps + ["(Next)"] if len(record_logs) >= 2 else visit_stamps
                 ax.set_xticklabels(extended_stamps, rotation=25, ha='right', fontsize=8)
                 ax.set_ylim(-5, 105)
-                ax.grid(True, linestyle='--', alpha=0.2, color='#8b949e')
-                
+                ax.grid(True, linestyle='--', alpha=0.2, color=TEXT_MUTED)
+
                 # Dark Theme Style Fixes for Matplotlib
-                fig.patch.set_facecolor('#161b22')
-                ax.set_facecolor('#0d1117')
-                ax.spines['bottom'].set_color('#30363d')
-                ax.spines['left'].set_color('#30363d')
+                fig.patch.set_facecolor(SURFACE)
+                ax.set_facecolor(SURFACE_ALT)
+                ax.spines['bottom'].set_color(BORDER)
+                ax.spines['left'].set_color(BORDER)
                 ax.spines['top'].set_visible(False)
                 ax.spines['right'].set_visible(False)
-                ax.tick_params(colors='#8b949e', labelsize=8)
+                ax.tick_params(colors=TEXT_MUTED, labelsize=8)
                 st.pyplot(fig)
                 plt.close(fig)
 
             # === ON-DEMAND EXPANDER PANEL FOR TECHNICAL LAYERS ===
-            with st.expander("🔍 View Advanced Technical Layers (Vascular Topology & AI ROI Focus)"):
+            with st.expander("🔍  View Advanced Technical Layers (Vascular Topology & AI ROI Focus)"):
                 adv_col1, adv_col2 = st.columns(2, gap="medium")
                 with adv_col1:
-                    st.markdown("<span style='color: #8b949e; font-size: 11px; text-transform: uppercase; font-weight:600;'>Vascular Topology Map</span>", unsafe_allow_html=True)
+                    st.markdown("<span class='rs-subtle-label'>Vascular Topology Map</span>", unsafe_allow_html=True)
                     st.image(vessel_map, use_container_width=True, clamp=True)
                 with adv_col2:
-                    st.markdown(f"<span style='color: #38bdf8; font-size: 11px; text-transform: uppercase; font-weight:600;'>AI ROI Bounding Boxes ({attention_index:.1f} Index)</span>", unsafe_allow_html=True)
+                    st.markdown(f"<span class='rs-subtle-label-accent'>AI ROI Bounding Boxes ({attention_index:.1f} Index)</span>", unsafe_allow_html=True)
                     st.image(boundary_rgb, use_container_width=True)
 
             # === ROW 2: DIAGNOSTIC MATRIX SUMMARY CARD ENGINE ===
-            st.markdown("<br><h4 style='color: #8b949e; font-size:13px; text-transform:uppercase; letter-spacing:1px; margin-bottom:15px;'>Classification & Metrics Summary</h4>", unsafe_allow_html=True)
+            st.markdown("<br><div class='rs-section-label'>Classification & Metrics Summary</div>", unsafe_allow_html=True)
             data_col1, data_col2 = st.columns(2, gap="large")
-            
+
             with data_col1:
                 st.markdown(f"""
-                    <div style="background-color: #161b22; padding: 22px; border-radius: 6px; border: 1px solid #30363d; height: 100%;">
-                        <p style="color: #8b949e; font-size: 11px; text-transform: uppercase; margin: 0; letter-spacing: 0.5px;">Diagnostic Verdict</p>
-                        <h1 style="color: {accent_color}; margin: 10px 0 5px 0; font-size: 38px; font-weight: 500;">{pred_name}</h1>
-                        <p style="color: #58a6ff; font-size: 12px; margin-bottom: 12px; font-weight: 500;">Integrity Consensus Validation: {consensus_status}</p>
-                        <p style="color: #8b949e; font-size: 12px; margin: 0;">Confidence: <b>{confidence:.2f}%</b> | Attention Intensity Score: <b>{attention_index:.1f}%</b></p>
-                        <p style="color: #c9d1d9; font-size: 13.5px; margin-top: 10px; line-height: 1.45;">{CLASS_DESCRIPTIONS[pred_idx]}</p>
+                    <div class="rs-card">
+                        <p style="color: {TEXT_MUTED}; font-size: 11px; text-transform: uppercase; margin: 0; letter-spacing: 0.5px;">Diagnostic Verdict</p>
+                        <h1 style="color: {accent_color}; margin: 10px 0 6px 0; font-size: 36px; font-weight: 600;">{pred_name}</h1>
+                        <p style="color: {INFO}; font-size: 12px; margin-bottom: 14px; font-weight: 600;">✓ Ensemble Consensus: {consensus_status}</p>
+                        <p style="color: {TEXT_MUTED}; font-size: 12.5px; margin: 0;">Confidence: <b style="color:{TEXT_MAIN};">{confidence:.2f}%</b> &nbsp;|&nbsp; Attention Intensity Score: <b style="color:{TEXT_MAIN};">{attention_index:.1f}%</b></p>
+                        <p style="color: {TEXT_MAIN}; font-size: 13.5px; margin-top: 14px; line-height: 1.5;">{CLASS_DESCRIPTIONS[pred_idx]}</p>
                     </div>
                 """, unsafe_allow_html=True)
-                
+
             with data_col2:
-                st.markdown("<div style='background-color: #161b22; padding: 22px; border-radius: 6px; border: 1px solid #30363d; height: 100%;'>", unsafe_allow_html=True)
-                st.markdown("<p style='color: #8b949e; font-size: 11px; text-transform: uppercase; margin: 0 0 15px 0; letter-spacing: 0.5px;'>Grade Probabilities Matrix</p>", unsafe_allow_html=True)
+                st.markdown(f"<div class='rs-card'>", unsafe_allow_html=True)
+                st.markdown(f"<p style='color: {TEXT_MUTED}; font-size: 11px; text-transform: uppercase; margin: 0 0 16px 0; letter-spacing: 0.5px;'>Grade Probabilities Matrix</p>", unsafe_allow_html=True)
                 for i in range(NUM_CLASSES):
                     cname = CLASS_NAMES[i]
                     pct = float(probabilities[i])
                     is_pred = (i == pred_idx)
-                    label_color = "#ffffff" if is_pred else "#8b949e"
-                    st.markdown(f"<div style='font-size: 12px; color: {label_color}; display: flex; justify-content: space-between; font-weight:500; margin-bottom:2px;'><span>{cname}</span><span>{pct*100:.1f}%</span></div>", unsafe_allow_html=True)
+                    label_color = TEXT_MAIN if is_pred else TEXT_MUTED
+                    weight = 700 if is_pred else 500
+                    st.markdown(f"<div style='font-size: 12.5px; color: {label_color}; display: flex; justify-content: space-between; font-weight:{weight}; margin-bottom:3px;'><span>{cname}</span><span>{pct*100:.1f}%</span></div>", unsafe_allow_html=True)
                     st.progress(pct)
                 st.markdown("</div>", unsafe_allow_html=True)
 
@@ -477,74 +604,85 @@ if model_loaded:
                 xai_text = "The internal neural activations are uniform and clean. No statistically significant anomalous pixel groupings were identified, indicating a stable vascular layer context."
             else:
                 xai_text = f"The structural prediction tracking matrix is primarily driven by concentrated pathology vectors localized within the <strong>{dominant_quad} quadrant</strong> (accounting for {quad_pct:.1f}% of overall visual network attention maps)."
-                
+
                 if len(record_logs) >= 2:
                     if trajectory_alert == "ACCELERATING":
-                        xai_text += f" <span style='color:#ef4444; font-weight:bold;'>WARNING: Longitudinal tracking indicates an upward pathology velocity (+{slope:.1f}% index shift per visit). Interventions should be accelerated immediately.</span>"
+                        xai_text += f" <span style='color:{DANGER}; font-weight:700;'>⚠ Longitudinal tracking indicates an upward pathology velocity (+{slope:.1f}% index shift per visit). Flagged for clinician review.</span>"
                     else:
                         xai_text += " Longitudinal tracking denotes a stabilized tracking vector path distribution."
+                else:
+                    xai_text += " <span style='opacity:0.75;'>(Longitudinal trend unavailable — at least 2 visits required.)</span>"
+
+            xai_text += f" <span style='opacity:0.7; font-style:italic;'>This reflects model attention, not a confirmed clinical diagnosis.</span>"
 
             st.markdown(f"""
-            <div style="background: #1f152d; border: 1px solid #4c297a; border-radius: 6px; padding: 18px; display: flex; gap: 14px; margin-bottom:15px;">
+            <div class="rs-banner" style="background: #10241f; border-color: #1c3d34;">
                 <div style="font-size: 22px; margin-top:-2px;">🧠</div>
                 <div>
-                    <div style="font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #d6adff; font-weight: 600; margin-bottom: 4px;">Dynamic XAI & Predictive Prognostics</div>
-                    <div style="font-size: 13.5px; line-height: 1.45; color: #e1cbff;"><strong>AI Decision Rationale:</strong> {xai_text}</div>
+                    <div class="rs-banner-title" style="color: {ACCENT_SOFT};">Dynamic XAI &amp; Predictive Prognostics</div>
+                    <div class="rs-banner-body" style="color: #cdeee8;"><strong>AI Decision Rationale:</strong> {xai_text}</div>
                 </div>
             </div>
             """, unsafe_allow_html=True)
-            
+
             st.markdown(f"""
-            <div style="background: #1b1c16; border: 1px solid #4d4617; border-radius: 6px; padding: 18px; display: flex; gap: 14px; margin-bottom:25px;">
+            <div class="rs-banner" style="background: #1a1f12; border-color: #3a3d1e; margin-bottom:25px;">
                 <div style="font-size: 22px; margin-top:-2px;">📋</div>
                 <div>
-                    <div style="font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #e2da9a; font-weight: 600; margin-bottom: 4px;">Clinical Management Directive</div>
-                    <div style="font-size: 13.5px; line-height: 1.45; color: #f7f3d3;">{CLINICAL_DIRECTIVES[pred_idx]}</div>
+                    <div class="rs-banner-title" style="color: {WARN};">Clinical Management Directive</div>
+                    <div class="rs-banner-body" style="color: #ede4c4;">{CLINICAL_DIRECTIVES[pred_idx]}</div>
                 </div>
             </div>
             """, unsafe_allow_html=True)
 
             # === ROW 4: DATA PAYLOAD LOGGING TABLE ===
-            st.markdown(f"<h4 style='color: #8b949e; font-size:14px; margin-bottom:12px;'>📋 Historical Tracking Summary Log ({patient_id})</h4>", unsafe_allow_html=True)
-            
-            table_html = '<table style="width:100%; text-align:left; border-collapse:collapse; font-size:14px; background:#161b22; border:1px solid #30363d; border-radius:6px;">'
-            table_html += '<thead><tr style="border-bottom:2px solid #30363d; color:#8b949e; background:#0d1117;">'
-            table_html += '<th style="padding:12px;">Visit Index</th>'
-            table_html += '<th style="padding:12px;">Timestamp</th>'
-            table_html += '<th style="padding:12px;">Diagnosis Verdict</th>'
-            table_html += '<th style="padding:12px;">Confidence Score</th>'
-            table_html += '<th style="padding:12px;">Attention Index</th>'
+            st.markdown(f"<div class='rs-section-label'>Historical Tracking Summary Log — {patient_id}</div>", unsafe_allow_html=True)
+
+            table_html = '<table class="rs-table"><thead><tr>'
+            table_html += '<th>Visit Index</th>'
+            table_html += '<th>Timestamp</th>'
+            table_html += '<th>Diagnosis Verdict</th>'
+            table_html += '<th>Confidence Score</th>'
+            table_html += '<th>Attention Index</th>'
             table_html += '</tr></thead><tbody>'
-            
+
             for i, r in enumerate(record_logs):
-                table_html += '<tr style="border-bottom:1px solid #30363d;">'
-                table_html += f'<td style="padding:12px;"><b>#{i+1}</b></td>'
-                table_html += f'<td style="padding:12px;">{r["timestamp"]}</td>'
-                table_html += f'<td style="padding:12px;">{r["diagnosis"]}</td>'
-                table_html += f'<td style="padding:12px;">{r["confidence"]}%</td>'
-                table_html += f'<td style="padding:12px; color:#38bdf8;"><b>{r["attention_index"]:.1f}%</b></td>'
+                table_html += '<tr>'
+                table_html += f'<td><b>#{i+1}</b></td>'
+                table_html += f'<td>{r["timestamp"]}</td>'
+                table_html += f'<td>{r["diagnosis"]}</td>'
+                table_html += f'<td>{r["confidence"]}%</td>'
+                table_html += f'<td style="color:{ACCENT};"><b>{r["attention_index"]:.1f}%</b></td>'
                 table_html += '</tr>'
-                
+
             table_html += '</tbody></table>'
             st.markdown(table_html, unsafe_allow_html=True)
 
             # --- DYNAMIC EXPORT BUTTON ASSEMBLIES ---
             st.markdown("<br>", unsafe_allow_html=True)
-            
+
             ist_timezone = pytz.timezone('Asia/Kolkata')
             current_date_ist = datetime.now(ist_timezone).strftime('%Y%m%d')
-            
+
             pdf_bytes = generate_clinical_pdf(
-                patient_id, pred_name, confidence, attention_index, 
+                patient_id, pred_name, confidence, attention_index,
                 dominant_quad, quad_pct, CLINICAL_DIRECTIVES[pred_idx], consensus_status
             )
-            
+
             st.download_button(
-                label="📥 Export Signed Clinical Summary PDF",
+                label="📥  Export Signed Clinical Summary PDF",
                 data=pdf_bytes,
                 file_name=f"RetiScan_{patient_id}_{current_date_ist}.pdf",
                 mime="application/pdf",
                 use_container_width=True
             )
+    else:
+        st.markdown(f"""
+        <div class="rs-card" style="text-align:center; padding:60px 30px; margin-top:10px;">
+            <div style="font-size:34px; margin-bottom:10px;">🖼️</div>
+            <div style="color:{TEXT_MAIN}; font-size:15px; font-weight:600; margin-bottom:6px;">No retinal image loaded</div>
+            <div style="color:{TEXT_MUTED}; font-size:13px;">Upload a fundus image from the Clinical Control Hub sidebar to begin analysis.</div>
+        </div>
+        """, unsafe_allow_html=True)
 else:
     st.info("👈 Complete the entry inputs in the Clinical Control Hub sidebar to initialize data processing pathways.")
