@@ -938,6 +938,41 @@ with st.expander("🗂️  Model Card & Audit Trail", expanded=False):
         <p style="font-size:12px; color:{TEXT_MUTED}; line-height:1.6; margin:0;">{MODEL_CARD['intended_use']}</p>
         """, unsafe_allow_html=True)
 
+# =====================================================================
+#  PHASE 2 ROADMAP — small popover button, purely additive
+# =====================================================================
+st.markdown("<div style='margin-top:14px;'></div>", unsafe_allow_html=True)
+_p2_col1, _p2_col2 = st.columns([1, 5])
+with _p2_col1:
+    with st.popover("🚀  Phase 2 Roadmap"):
+        st.markdown(f"""
+        <div style="font-size:12.5px; color:{TEXT_MUTED}; line-height:1.8;">
+        <b style="color:{TEXT_MAIN};">Cloud Database & Security Migration</b><br>
+        Move from local JSON tracking to a centralized cloud database (e.g. PostgreSQL / AWS S3), built with
+        HIPAA-aligned practices — encryption at rest and in transit, access control, audit logging.<br><br>
+
+        <b style="color:{TEXT_MAIN};">Native DICOM File Ingestion</b><br>
+        Read and parse raw <code>.dcm</code> files directly from clinical retinal cameras instead of relying
+        only on <code>.jpg</code>/<code>.png</code> exports.<br><br>
+
+        <b style="color:{TEXT_MAIN};">External Model Validation</b><br>
+        Benchmark the model against unseen clinical datasets (Messidor, IDRiD) to test generalization across
+        ethnicities and camera hardware.<br><br>
+
+        <b style="color:{TEXT_MAIN};">Quantifiable Lesion Tracking</b><br>
+        Add a dedicated segmentation model to detect and count individual microaneurysms and exudates,
+        complementing the existing Grad-CAM explainability layer.<br><br>
+
+        <b style="color:{TEXT_MAIN};">Clinician-in-the-Loop Feedback</b><br>
+        Let specialists verify, override, or annotate AI triage findings — capturing high-value data for
+        future model retraining.<br><br>
+
+        <b style="color:{TEXT_MAIN};">Production API Architecture</b><br>
+        Decouple the Streamlit interface from the deep learning engine via a dedicated microservice backend
+        (e.g. FastAPI) for speed and stability under load.
+        </div>
+        """, unsafe_allow_html=True)
+
 st.markdown(f"""
 <div style="text-align:center; padding: 22px 0 6px 0; color:{TEXT_FAINT}; font-size:11px; letter-spacing:0.3px;">
     RetiScan Pro v5 &nbsp;·&nbsp; Decision-support tool for DR screening triage &nbsp;·&nbsp; Not a standalone diagnostic device
