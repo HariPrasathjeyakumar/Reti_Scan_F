@@ -80,7 +80,7 @@ st.markdown(f"""
         border: 1.5px dashed {BORDER} !important;
         border-radius: 12px !important;
     }}
-    [data-testid="stFileUploaderDropzone"] * {{ color: #7de1fa !important; }}
+    [data-testid="stFileUploaderDropzone"] * {{ color: #e8f6fa !important; }}
     [data-testid="stFileUploaderDropzone"] button,
     section[data-testid="stFileUploader"] button {{
         background-color: {ACCENT} !important;
