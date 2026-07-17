@@ -11,240 +11,199 @@ from datetime import datetime
 from fpdf import FPDF
 from skimage.filters import frangi  # Mathematical vascular extraction
 
-# Set page configurations to clean wide layout
+# Set page configurations — wide canvas, no sidebar (structure is fully custom)
 st.set_page_config(
-    page_title="RetiScan Pro v5 Dashboard",
+    page_title="RetiScan Pro v5",
     page_icon="🩺",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="collapsed"
 )
 
 # =====================================================================
-#  0. DESIGN TOKENS — single source of truth for the clinical theme
+#  0. DESIGN TOKENS — graphite + amber/emerald duotone (distinct identity)
 # =====================================================================
-# Deep clinical-tech theme: navy/slate surfaces, high-contrast text,
-# a single confident accent color, and semantic status colors.
-BG          = "#0c1220"
-SURFACE     = "#141b2d"
-SURFACE_ALT = "#1b2438"
-SURFACE_RAISED = "#202b44"
-BORDER      = "#2b3652"
-TEXT_MAIN   = "#eef1f8"
-TEXT_MUTED  = "#8d96af"
-ACCENT      = "#22d3c8"     # teal-cyan — primary clinical accent
-ACCENT_DARK = "#14a99f"
-ACCENT_SOFT = "#173634"
-INFO        = "#4f9bff"
-WARN        = "#f0b23c"
-WARN_BG     = "#332612"
-WARN_BORDER = "#584419"
-DANGER      = "#ff5c5c"
-DANGER_BG   = "#301416"
-DANGER_BORDER = "#5c2226"
-SUCCESS     = "#33d183"
-SUCCESS_BG  = "#122a20"
-SUCCESS_BORDER = "#1e4d38"
-XAI_BG      = "#141d3a"
-XAI_BORDER  = "#2c3f6e"
-XAI_TEXT    = "#8fb4ff"
+BG           = "#0d0e12"
+SURFACE      = "#16171d"
+SURFACE_ALT  = "#1d1f27"
+RAISED       = "#24262f"
+BORDER       = "#2c2e38"
+TEXT_MAIN    = "#f3f2ee"
+TEXT_MUTED   = "#96979f"
+TEXT_FAINT   = "#5f606a"
+ACCENT       = "#ff8a3d"     # warm amber — primary identity color
+ACCENT_DEEP  = "#e56f22"
+EMERALD      = "#33c793"     # secondary accent — used for positive/safe states
+INFO         = "#5eb1ef"
+WARN         = "#f2b134"
+DANGER       = "#f2545b"
+SUCCESS      = "#33c793"
+
+SEVERITY_COLOR = {
+    "No DR":            EMERALD,
+    "Mild NPDR":         WARN,
+    "Moderate NPDR":     INFO,
+    "Severe NPDR":       "#ef8b3f",
+    "Proliferative DR":  DANGER,
+}
 
 st.markdown(f"""
     <style>
-    /* ---------- Global canvas ---------- */
+    /* ============ Canvas ============ */
     html, body, .main, [data-testid="stAppViewContainer"], [data-testid="stApp"] {{
         background-color: {BG} !important;
         color: {TEXT_MAIN};
         font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
     }}
-    [data-testid="stHeader"] {{
-        background-color: {BG} !important;
-    }}
-    .block-container {{
-        padding-top: 1.6rem;
-        padding-bottom: 3rem;
-        max-width: 1300px;
-    }}
+    [data-testid="stHeader"] {{ background-color: transparent !important; }}
+    [data-testid="stSidebar"] {{ display: none !important; }}
+    .block-container {{ padding-top: 0.5rem; padding-bottom: 4rem; max-width: 1180px; }}
 
-    /* ---------- Sidebar ---------- */
-    div[data-testid="stSidebar"] {{
-        background-color: {SURFACE};
-        border-right: 1px solid {BORDER};
-    }}
-    div[data-testid="stSidebar"] * {{ color: {TEXT_MAIN}; }}
-    div[data-testid="stSidebar"] label {{
-        font-weight: 700;
-        font-size: 11.5px;
-        color: {TEXT_MUTED} !important;
-        text-transform: uppercase;
-        letter-spacing: 0.6px;
-    }}
-
-    /* ---------- Inputs ---------- */
+    /* ============ Inputs ============ */
     .stTextInput input {{
         background-color: {SURFACE_ALT} !important;
         border: 1px solid {BORDER} !important;
-        border-radius: 8px !important;
+        border-radius: 10px !important;
         color: {TEXT_MAIN} !important;
+        font-weight: 600 !important;
     }}
     .stTextInput input:focus {{
         border-color: {ACCENT} !important;
         box-shadow: 0 0 0 1px {ACCENT} !important;
     }}
+    label {{ color: {TEXT_MUTED} !important; font-size: 11.5px !important; font-weight: 700 !important;
+             text-transform: uppercase; letter-spacing: 0.6px; }}
 
-    /* ---------- File uploader (fixes "fully white" button issue) ---------- */
+    /* ============ Uploader ============ */
     [data-testid="stFileUploaderDropzone"] {{
         background-color: {SURFACE_ALT} !important;
         border: 1.5px dashed {BORDER} !important;
-        border-radius: 10px !important;
+        border-radius: 12px !important;
     }}
-    [data-testid="stFileUploaderDropzone"] * {{
-        color: {TEXT_MUTED} !important;
-    }}
+    [data-testid="stFileUploaderDropzone"] * {{ color: {TEXT_MUTED} !important; }}
     [data-testid="stFileUploaderDropzone"] button,
-    [data-testid="baseButton-secondary"],
     section[data-testid="stFileUploader"] button {{
-        background-color: {SURFACE_RAISED} !important;
-        color: {TEXT_MAIN} !important;
-        border: 1px solid {BORDER} !important;
-        border-radius: 8px !important;
-        font-weight: 600 !important;
-    }}
-    [data-testid="stFileUploaderDropzone"] button:hover,
-    section[data-testid="stFileUploader"] button:hover {{
-        border-color: {ACCENT} !important;
-        color: {ACCENT} !important;
-    }}
-    [data-testid="stFileUploaderFile"] {{
-        background-color: {SURFACE_RAISED} !important;
-        border-radius: 8px !important;
-        border: 1px solid {BORDER} !important;
-    }}
-
-    /* ---------- All generic buttons (kind=primary/secondary) ---------- */
-    button[kind="primary"], button[kind="secondary"],
-    .stButton button, .stDownloadButton button {{
         background-color: {ACCENT} !important;
-        color: #06201d !important;
+        color: #201200 !important;
         border: none !important;
         border-radius: 8px !important;
         font-weight: 700 !important;
-        padding: 10px 16px !important;
-        box-shadow: 0 2px 10px rgba(34, 211, 200, 0.25);
-        transition: all 0.15s ease-in-out;
+    }}
+    [data-testid="stFileUploaderFile"] {{
+        background-color: {RAISED} !important;
+        border-radius: 8px !important;
+        border: 1px solid {BORDER} !important;
+    }}
+
+    /* ============ Buttons ============ */
+    .stButton button, .stDownloadButton button {{
+        background-color: {ACCENT} !important;
+        color: #201200 !important;
+        border: none !important;
+        border-radius: 10px !important;
+        font-weight: 800 !important;
+        padding: 12px 18px !important;
+        box-shadow: 0 4px 16px rgba(255, 138, 61, 0.28);
+        transition: transform 0.12s ease, box-shadow 0.12s ease;
     }}
     .stButton button:hover, .stDownloadButton button:hover {{
-        background-color: {ACCENT_DARK} !important;
-        box-shadow: 0 2px 14px rgba(34, 211, 200, 0.4);
+        transform: translateY(-1px);
+        box-shadow: 0 6px 20px rgba(255, 138, 61, 0.4);
     }}
-    .stDownloadButton button p {{ color: #06201d !important; font-weight: 700 !important; }}
+    .stDownloadButton button p {{ color: #201200 !important; font-weight: 800 !important; }}
 
-    /* ---------- Expander ---------- */
+    /* ============ Radio-as-segmented-control (image switcher) ============ */
+    div[role="radiogroup"] {{
+        display: flex; gap: 6px; background: {SURFACE_ALT};
+        padding: 5px; border-radius: 12px; border: 1px solid {BORDER};
+        width: fit-content;
+    }}
+    div[role="radiogroup"] label {{
+        background: transparent; border-radius: 9px; padding: 8px 16px !important;
+        margin: 0 !important; color: {TEXT_MUTED} !important; font-weight: 700 !important;
+        text-transform: none !important; letter-spacing: 0 !important; font-size: 13px !important;
+        cursor: pointer;
+    }}
+    div[role="radiogroup"] label[data-checked="true"],
+    div[role="radiogroup"] input:checked + div {{ color: {ACCENT} !important; }}
+    div[role="radiogroup"] > label > div:first-child {{ display: none; }}
+
+    /* ============ Expander ============ */
     .stExpander {{
         background-color: {SURFACE} !important;
         border: 1px solid {BORDER} !important;
-        border-radius: 12px;
-        margin-top: 15px;
+        border-radius: 14px;
     }}
-    .stExpander summary {{
-        color: {TEXT_MAIN} !important;
-        font-weight: 600 !important;
-    }}
+    .stExpander summary {{ color: {TEXT_MAIN} !important; font-weight: 700 !important; }}
 
-    /* ---------- Tabs ---------- */
-    .stTabs [data-baseweb="tab-list"] {{
-        gap: 4px;
-        border-bottom: 1px solid {BORDER};
-    }}
-    .stTabs [data-baseweb="tab"] {{
-        background-color: transparent;
-        color: {TEXT_MUTED};
-        font-weight: 600;
-        font-size: 13.5px;
-        border-radius: 8px 8px 0 0;
-        padding: 10px 18px;
-    }}
-    .stTabs [aria-selected="true"] {{
-        background-color: {SURFACE} !important;
-        color: {ACCENT} !important;
-        border-bottom: 2px solid {ACCENT} !important;
-    }}
-
-    /* ---------- Misc Streamlit widgets ---------- */
-    div[data-testid="stBlock"] {{ border-radius: 12px; }}
-    [data-testid="stMetricValue"] {{ color: {TEXT_MAIN}; }}
-    [data-testid="stMetricLabel"] {{ color: {TEXT_MUTED}; }}
-    .stProgress > div > div {{ background-color: {ACCENT} !important; }}
+    /* ============ Misc widgets ============ */
+    .stProgress > div > div {{ background: linear-gradient(90deg, {ACCENT}, {ACCENT_DEEP}) !important; }}
     .stProgress > div {{ background-color: {SURFACE_ALT} !important; }}
     hr {{ border-color: {BORDER} !important; }}
     ::-webkit-scrollbar {{ width: 8px; height: 8px; }}
     ::-webkit-scrollbar-thumb {{ background-color: {BORDER}; border-radius: 8px; }}
 
-    /* ---------- Custom component classes ---------- */
-    .rs-topbar {{
-        display: flex; align-items: center; justify-content: space-between;
-        padding-bottom: 18px; margin-bottom: 22px; border-bottom: 1px solid {BORDER};
+    /* ============ Custom layout primitives ============ */
+    .rs-hero {{
+        display: flex; align-items: center; gap: 16px;
+        padding: 26px 0 22px 0;
     }}
-    .rs-brand {{ display: flex; align-items: center; gap: 14px; }}
-    .rs-brand-icon {{
-        width: 46px; height: 46px; border-radius: 12px;
-        background: linear-gradient(135deg, {ACCENT}, {ACCENT_DARK});
-        display: flex; align-items: center; justify-content: center; font-size: 22px;
+    .rs-hero-mark {{
+        width: 52px; height: 52px; border-radius: 16px; flex-shrink: 0;
+        background: linear-gradient(145deg, {ACCENT}, {ACCENT_DEEP});
+        display: flex; align-items: center; justify-content: center; font-size: 26px;
+        box-shadow: 0 6px 20px rgba(255, 138, 61, 0.3);
     }}
-    .rs-kpi {{
-        background-color: {SURFACE}; border: 1px solid {BORDER}; border-radius: 12px;
-        padding: 16px 18px; height: 100%;
+    .rs-hero-title {{ font-size: 27px; font-weight: 800; letter-spacing: -0.3px; line-height: 1.15; }}
+    .rs-hero-sub {{ color: {TEXT_MUTED}; font-size: 13px; margin-top: 3px; }}
+
+    .rs-toolbar {{
+        background: {SURFACE}; border: 1px solid {BORDER}; border-radius: 16px;
+        padding: 18px 22px; margin-bottom: 26px;
     }}
-    .rs-kpi-label {{
-        color: {TEXT_MUTED}; font-size: 10.5px; text-transform: uppercase;
-        letter-spacing: 0.6px; font-weight: 700; margin-bottom: 6px;
+    .rs-toolbar-label {{
+        color: {TEXT_FAINT}; font-size: 10.5px; text-transform: uppercase;
+        letter-spacing: 0.8px; font-weight: 800; margin-bottom: 8px;
     }}
-    .rs-kpi-value {{ font-size: 22px; font-weight: 700; line-height: 1.2; }}
-    .rs-section-label {{
-        color: {TEXT_MAIN}; font-size: 13px; text-transform: uppercase;
-        letter-spacing: 1px; font-weight: 700; margin-bottom: 16px;
-        border-left: 4px solid {ACCENT}; padding-left: 10px;
+
+    .rs-divider-label {{
+        color: {TEXT_MAIN}; font-size: 12.5px; text-transform: uppercase;
+        letter-spacing: 1px; font-weight: 800; margin: 30px 0 16px 0;
+        display: flex; align-items: center; gap: 10px;
     }}
-    .rs-subtle-label {{
-        color: {TEXT_MUTED}; font-size: 11px; text-transform: uppercase;
-        letter-spacing: 0.6px; font-weight: 700;
+    .rs-divider-label::after {{
+        content: ""; flex: 1; height: 1px; background: {BORDER};
     }}
-    .rs-subtle-label-accent {{
-        color: {ACCENT}; font-size: 11px; text-transform: uppercase;
-        letter-spacing: 0.6px; font-weight: 700;
+
+    .rs-verdict-hero {{
+        border-radius: 20px; padding: 32px 34px; margin-bottom: 8px;
+        position: relative; overflow: hidden; border: 1px solid {BORDER};
     }}
-    .rs-card {{
-        background-color: {SURFACE}; padding: 26px; border-radius: 14px;
-        border: 1px solid {BORDER}; height: 100%;
+    .rs-pill {{
+        display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700;
+        padding: 6px 13px; border-radius: 100px; border: 1px solid; margin-right: 8px;
     }}
-    .rs-footer-card {{
-        background-color: {SURFACE_ALT}; padding: 20px; border-radius: 12px;
-        border: 1px solid {BORDER}; height: 100%;
-    }}
-    .rs-banner {{
-        border-radius: 12px; padding: 18px 22px; display: flex; gap: 14px;
-        margin-bottom: 16px; border: 1px solid {BORDER};
-    }}
-    .rs-banner-title {{
-        font-size: 11.5px; text-transform: uppercase; letter-spacing: 1px;
-        font-weight: 700; margin-bottom: 6px;
-    }}
-    .rs-banner-body {{ font-size: 13.5px; line-height: 1.65; }}
+    .rs-stat-strip {{ display: flex; gap: 28px; flex-wrap: wrap; margin-top: 18px; }}
+    .rs-stat {{ display: flex; flex-direction: column; }}
+    .rs-stat-label {{ color: {TEXT_MUTED}; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.6px; font-weight: 700; }}
+    .rs-stat-value {{ font-size: 19px; font-weight: 800; margin-top: 2px; }}
+
+    .rs-rail {{ border-left: 3px solid {BORDER}; padding-left: 18px; margin-bottom: 22px; }}
+    .rs-rail-accent {{ border-left: 3px solid {ACCENT}; padding-left: 18px; margin-bottom: 22px; }}
+    .rs-rail-warn {{ border-left: 3px solid {WARN}; padding-left: 18px; margin-bottom: 22px; }}
+    .rs-rail-title {{ font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.8px; font-weight: 800; margin-bottom: 8px; }}
+    .rs-rail-body {{ font-size: 13.5px; line-height: 1.65; color: {TEXT_MAIN}; }}
+
+    .rs-prob-row {{ display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 5px; }}
+
     .rs-reject {{
-        background: {DANGER_BG}; color: #ffb4b4; padding: 18px 22px;
-        border-radius: 12px; border: 1px solid {DANGER_BORDER}; margin-top: 15px;
+        background: {SURFACE}; border-left: 4px solid {DANGER}; border-radius: 10px;
+        padding: 18px 22px; color: {TEXT_MAIN};
     }}
-    .rs-table {{
-        width: 100%; text-align: left; border-collapse: collapse; font-size: 13.5px;
-        background: {SURFACE}; border: 1px solid {BORDER}; border-radius: 10px; overflow: hidden;
-    }}
-    .rs-table th {{
-        padding: 12px 14px; color: {TEXT_MUTED}; background: {SURFACE_ALT};
-        border-bottom: 1px solid {BORDER}; font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.5px;
-    }}
-    .rs-table td {{ padding: 12px 14px; border-bottom: 1px solid {BORDER}; color: {TEXT_MAIN}; }}
-    .rs-badge {{
-        display:inline-block; font-size:11.5px; font-weight:700; padding:5px 10px;
-        border-radius:6px; border:1px solid;
+
+    .rs-timeline-chip {{
+        display: inline-flex; flex-direction: column; gap: 2px;
+        background: {SURFACE_ALT}; border: 1px solid {BORDER}; border-radius: 12px;
+        padding: 10px 16px; margin-right: 10px; margin-bottom: 10px; min-width: 140px;
     }}
     </style>
 """, unsafe_allow_html=True)
@@ -264,14 +223,6 @@ CLASS_NAMES = {
     2: "Moderate NPDR",
     3: "Severe NPDR",
     4: "Proliferative DR"
-}
-
-SEVERITY_COLOR = {
-    "No DR":            "#158a5c",
-    "Mild NPDR":         "#b9781a",
-    "Moderate NPDR":     "#1c6fd6",
-    "Severe NPDR":       "#d0651f",
-    "Proliferative DR":  "#c0271f",
 }
 
 CLASS_DESCRIPTIONS = {
@@ -573,424 +524,341 @@ def compute_diagnostic_graphs(img_tensor, grad_model, pred_idx, img_bgr, x_cente
     return isolated_heatmap, boundary_img_bgr, ai_attention_index, dominant_quadrant, quadrant_focus_pct
 
 # =====================================================================
-#  4. USER INTERFACE GRAPHICS RENDERING CANVAS
+#  4. USER INTERFACE — entirely new layout, no sidebar, no card grid
 # =====================================================================
+
+# ---------------------------------------------------------------------
+# HERO — brand lockup only. No competing timestamp/metadata here.
+# ---------------------------------------------------------------------
 st.markdown(f"""
-<div class="rs-topbar">
-    <div class="rs-brand">
-        <div class="rs-brand-icon">🩺</div>
-        <div>
-            <div style="color:{TEXT_MAIN}; font-size:24px; font-weight:700; line-height:1.2;">RetiScan Pro <span style="color:{ACCENT};">v5</span></div>
-            <div style="color:{TEXT_MUTED}; font-size:12.5px; letter-spacing:0.3px;">Diabetic Retinopathy Grading &amp; Explainable AI Dashboard</div>
+<div class="rs-hero">
+    <div class="rs-hero-mark">🩺</div>
+    <div>
+        <div class="rs-hero-title">RetiScan Pro <span style="color:{ACCENT};">v5</span></div>
+        <div class="rs-hero-sub">AI-assisted diabetic retinopathy grading with explainable, auditable reasoning</div>
+    </div>
+</div>
+""", unsafe_allow_html=True)
+
+# ---------------------------------------------------------------------
+# TOOLBAR — replaces the sidebar entirely. Patient intake + upload
+# live in the main canvas as a horizontal control deck.
+# ---------------------------------------------------------------------
+st.markdown('<div class="rs-toolbar">', unsafe_allow_html=True)
+tb_col1, tb_col2, tb_col3 = st.columns([1.1, 1.6, 1], gap="large")
+with tb_col1:
+    st.markdown('<div class="rs-toolbar-label">Patient Tracking Key</div>', unsafe_allow_html=True)
+    patient_id = st.text_input("patient_id", value="PATIENT-601", label_visibility="collapsed").strip().upper()
+with tb_col2:
+    st.markdown('<div class="rs-toolbar-label">Retinal Record Asset</div>', unsafe_allow_html=True)
+    uploaded_file = st.file_uploader("uploader", type=["jpg", "jpeg", "png"], label_visibility="collapsed") if model_loaded else None
+with tb_col3:
+    st.markdown('<div class="rs-toolbar-label">Active Pipeline</div>', unsafe_allow_html=True)
+    st.markdown(f"""
+    <div style="font-size:13px; font-weight:700; color:{TEXT_MAIN}; margin-top:6px;">EfficientNetB3 · 5-class ICDR</div>
+    <div style="font-size:11.5px; color:{TEXT_MUTED}; margin-top:2px;">Grad-CAM · TTA Uncertainty</div>
+    """, unsafe_allow_html=True)
+st.markdown('</div>', unsafe_allow_html=True)
+
+if not model_loaded:
+    st.stop()
+
+if uploaded_file is None:
+    st.markdown(f"""
+    <div style="text-align:center; padding:80px 20px; color:{TEXT_MUTED};">
+        <div style="font-size:38px; margin-bottom:14px;">🖼️</div>
+        <div style="color:{TEXT_MAIN}; font-size:16px; font-weight:700; margin-bottom:6px;">Awaiting retinal image</div>
+        <div style="font-size:13px;">Upload a fundus photograph above to begin the diagnostic pipeline.</div>
+    </div>
+    """, unsafe_allow_html=True)
+    st.stop()
+
+file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
+img_bgr = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
+
+passed_screening, message, x_center, y_center, radius = run_pre_computing_screening(img_bgr)
+
+if not passed_screening:
+    st.markdown(f"""
+    <div class='rs-reject'>
+        <b style="color:{DANGER};">✕ SCREENING REJECTED</b><br><br>{message}<br>
+        <span style='font-size:12px; opacity:0.75;'>Pipeline terminated automatically to prevent false model classification predictions on corrupted data configurations.</span>
+    </div>
+    """, unsafe_allow_html=True)
+    st.stop()
+
+img_tensor = preprocess_for_inference(img_bgr)
+
+with st.spinner("Processing Multi-Variant Ensemble Imaging Analytics..."):
+    probabilities, consensus_status, class_uncertainty = run_tta_ensemble_inference(model, img_tensor)
+
+pred_idx = int(np.argmax(probabilities))
+pred_name = CLASS_NAMES[pred_idx]
+confidence = probabilities[pred_idx] * 100
+accent_color = SEVERITY_COLOR[pred_name]
+
+isolated_heatmap, boundary_img, attention_index, dominant_quad, quad_pct = compute_diagnostic_graphs(
+    img_tensor, grad_model, pred_idx, img_bgr, x_center, y_center, radius
+)
+
+with st.spinner("Mapping Vascular Topography..."):
+    vessel_map = generate_vascular_map(img_bgr, x_center, y_center, radius)
+
+record_logs = save_patient_record(patient_id, pred_name, confidence, attention_index)
+
+heatmap_color = cv2.applyColorMap(isolated_heatmap, cv2.COLORMAP_JET)
+gradcam_blend = cv2.addWeighted(heatmap_color, 0.38, img_bgr, 0.62, 0)
+
+img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
+gradcam_rgb = cv2.cvtColor(gradcam_blend, cv2.COLOR_BGR2RGB)
+boundary_rgb = cv2.cvtColor(boundary_img, cv2.COLOR_BGR2RGB)
+
+# Secondary clinical output: referable vs non-referable DR (standard screening
+# convention — Moderate NPDR and above requires specialist referral). Derived
+# directly from the same fused probabilities, no separate model needed.
+referable_prob = float(np.sum([probabilities[i] for i in REFERABLE_CLASSES])) * 100.0
+is_referable = pred_idx in REFERABLE_CLASSES
+referral_color = DANGER if is_referable else EMERALD
+referral_label = "REFERABLE" if is_referable else "NON-REFERABLE"
+
+# ---------------------------------------------------------------------
+# VERDICT HERO — one dominant strip instead of a grid of boxed KPIs
+# ---------------------------------------------------------------------
+st.markdown(f"""
+<div class="rs-verdict-hero" style="background: linear-gradient(120deg, {accent_color}18, {SURFACE} 55%);">
+    <div style="color:{TEXT_MUTED}; font-size:11px; text-transform:uppercase; letter-spacing:1px; font-weight:800;">Diagnostic Verdict</div>
+    <div style="font-size:44px; font-weight:800; color:{accent_color}; margin:8px 0 14px 0; letter-spacing:-0.5px;">{pred_name}</div>
+    <div>
+        <span class="rs-pill" style="border-color:{referral_color}; color:{referral_color}; background:{referral_color}14;">
+            {"⬤" if is_referable else "○"} {referral_label}
+        </span>
+        <span class="rs-pill" style="border-color:{BORDER}; color:{TEXT_MUTED};">{consensus_status}</span>
+    </div>
+    <div class="rs-stat-strip">
+        <div class="rs-stat"><div class="rs-stat-label">Confidence</div><div class="rs-stat-value">{confidence:.1f}%</div></div>
+        <div class="rs-stat"><div class="rs-stat-label">Attention Intensity</div><div class="rs-stat-value">{attention_index:.1f}%</div></div>
+        <div class="rs-stat"><div class="rs-stat-label">Referable Probability</div><div class="rs-stat-value" style="color:{referral_color};">{referable_prob:.1f}%</div></div>
+        <div class="rs-stat"><div class="rs-stat-label">Dominant Quadrant</div><div class="rs-stat-value" style="font-size:15px;">{dominant_quad}</div></div>
+    </div>
+</div>
+<p style="color:{TEXT_MAIN}; font-size:13.5px; line-height:1.65; margin: 18px 4px 0 4px;">{CLASS_DESCRIPTIONS[pred_idx]}</p>
+""", unsafe_allow_html=True)
+
+# ---------------------------------------------------------------------
+# VISUAL EVIDENCE — segmented switcher (pill radio) instead of a
+# side-by-side image grid; asymmetric split with the narrative rail.
+# ---------------------------------------------------------------------
+st.markdown('<div class="rs-divider-label">Visual Evidence</div>', unsafe_allow_html=True)
+
+evidence_col, rail_col = st.columns([1.35, 1], gap="large")
+
+with evidence_col:
+    view_choice = st.radio(
+        "view", ["Base Image", "Grad-CAM Overlay", "Vascular Topology", "ROI Boundaries"],
+        horizontal=True, label_visibility="collapsed"
+    )
+    if view_choice == "Base Image":
+        st.image(img_rgb, use_container_width=True)
+    elif view_choice == "Grad-CAM Overlay":
+        st.image(gradcam_rgb, use_container_width=True)
+    elif view_choice == "Vascular Topology":
+        st.image(vessel_map, use_container_width=True, clamp=True)
+    else:
+        st.image(boundary_rgb, use_container_width=True)
+
+    st.markdown('<div class="rs-divider-label">Grade Probabilities</div>', unsafe_allow_html=True)
+    for i in range(NUM_CLASSES):
+        cname = CLASS_NAMES[i]
+        pct = float(probabilities[i])
+        uncertainty = float(class_uncertainty[i])
+        is_pred = (i == pred_idx)
+        label_color = TEXT_MAIN if is_pred else TEXT_MUTED
+        weight = 800 if is_pred else 500
+        st.markdown(
+            f"<div class='rs-prob-row'><span style='color:{label_color}; font-weight:{weight};'>{cname}</span>"
+            f"<span style='color:{label_color}; font-weight:{weight};'>{pct*100:.1f}% "
+            f"<span style='color:{TEXT_FAINT}; font-weight:400; font-size:11px;'>(± {uncertainty:.1f})</span></span></div>",
+            unsafe_allow_html=True
+        )
+        st.progress(pct)
+    st.markdown(
+        f"<p style='color:{TEXT_FAINT}; font-size:11.5px; margin-top:10px; line-height:1.5;'>± values reflect predictive uncertainty (std. dev.) across the 3-view TTA ensemble.</p>",
+        unsafe_allow_html=True
+    )
+
+with rail_col:
+    # --- Explainable AI narrative (logic unchanged) ---
+    visit_stamps = [r["timestamp"].split(" ")[0] for r in record_logs]
+    attention_indices = [r["attention_index"] for r in record_logs]
+    x_indices = np.arange(len(record_logs))
+
+    MIN_VISITS_FOR_TREND = 3
+    r_squared = None
+    slope = None
+    next_x = None
+    next_y_pred = None
+    if len(record_logs) >= MIN_VISITS_FOR_TREND:
+        slope, intercept = np.polyfit(x_indices, attention_indices, 1)
+        fitted = slope * x_indices + intercept
+        ss_res = np.sum((np.array(attention_indices) - fitted) ** 2)
+        ss_tot = np.sum((np.array(attention_indices) - np.mean(attention_indices)) ** 2)
+        r_squared = 1 - (ss_res / ss_tot) if ss_tot > 0 else 0.0
+        next_x = len(record_logs)
+        next_y_pred = max(0.0, min(100.0, slope * next_x + intercept))
+        if slope > 1.5 and r_squared >= 0.5:
+            trajectory_alert = "ACCELERATING"
+        elif slope > 1.5 and r_squared < 0.5:
+            trajectory_alert = "NOISY_TREND"
+        else:
+            trajectory_alert = "STABILIZED"
+    else:
+        trajectory_alert = "INSUFFICIENT_TIMELINE_DATA"
+
+    if pred_idx == 0:
+        xai_text = (
+            "The Grad-CAM attention map shows no concentrated, high-intensity activation clusters within the fundus "
+            "field — activations are diffuse and low-magnitude across the retina. This is consistent with a 'No DR' "
+            "classification rather than a positive finding the model is choosing to ignore."
+        )
+    else:
+        xai_text = (
+            f"Grad-CAM traces which pixels most influenced the <strong>{pred_name}</strong> prediction by back-propagating "
+            f"the class score to the final convolutional layer. Attention is most concentrated in the "
+            f"<strong>{dominant_quad} quadrant</strong> ({quad_pct:.1f}% of total activation mass), meaning the decision "
+            f"was driven predominantly by structures in that region."
+        )
+        if trajectory_alert == "ACCELERATING":
+            xai_text += (
+                f" <span style='color:{DANGER}; font-weight:700;'>⚠ {len(record_logs)}-visit trend shows an upward "
+                f"pathology velocity (+{slope:.1f}%/visit, R²={r_squared:.2f}) — flagged for clinician review.</span>"
+            )
+        elif trajectory_alert == "NOISY_TREND":
+            xai_text += (
+                f" <span style='color:{WARN}; font-weight:600;'>A rising trend is present (+{slope:.1f}%/visit) but "
+                f"the fit is weak (R²={r_squared:.2f}) — more visits are needed before this is reliable.</span>"
+            )
+        elif trajectory_alert == "STABILIZED":
+            xai_text += " Longitudinal tracking shows no statistically meaningful upward trend."
+        else:
+            xai_text += f" <span style='opacity:0.7;'>Trend analysis needs 3+ visits ({len(record_logs)} on record).</span>"
+
+    xai_text += (
+        " <span style='opacity:0.65; font-style:italic;'>This reflects model attention, not a confirmed clinical "
+        "diagnosis.</span>"
+    )
+
+    st.markdown(f"""
+    <div class="rs-rail-accent">
+        <div class="rs-rail-title" style="color:{ACCENT};">Explainable AI Rationale</div>
+        <div class="rs-rail-body">{xai_text}</div>
+    </div>
+    <div class="rs-rail-warn">
+        <div class="rs-rail-title" style="color:{WARN};">Clinical Management Directive</div>
+        <div class="rs-rail-body">{CLINICAL_DIRECTIVES[pred_idx]}</div>
+    </div>
+    <div class="rs-rail">
+        <div class="rs-rail-title" style="color:{TEXT_MUTED};">Referral Classification</div>
+        <div class="rs-rail-body" style="color:{TEXT_MUTED}; font-size:12.5px;">
+            No DR / Mild NPDR → non-referable. Moderate NPDR and above → referable, specialist review advised.
+            This patient's aggregated referable-class probability is <b style="color:{referral_color};">{referable_prob:.1f}%</b>.
         </div>
-    </div>
-    <div style="text-align:right;">
-        <div style="color:{TEXT_MUTED}; font-size:10.5px; text-transform:uppercase; letter-spacing:0.6px; font-weight:700;">Screening Session</div>
-        <div style="color:{TEXT_MAIN}; font-size:13px; font-weight:600;">{datetime.now(pytz.timezone('Asia/Kolkata')).strftime('%d %b %Y, %H:%M IST')}</div>
-    </div>
-</div>
-""", unsafe_allow_html=True)
-
-# ---------------------------------------------------------------------
-# Sidebar — Clinical Control Hub
-# ---------------------------------------------------------------------
-st.sidebar.markdown(f"""
-<div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
-    <span style="font-size:20px;">🧭</span>
-    <span style="color:{TEXT_MAIN}; font-weight:700; font-size:16px;">Clinical Control Hub</span>
-</div>
-<div style="color:{TEXT_MUTED}; font-size:11.5px; margin-bottom:20px;">Patient intake &amp; imaging upload</div>
-""", unsafe_allow_html=True)
-patient_id = st.sidebar.text_input("Patient ID Key", value="PATIENT-601").strip().upper()
-
-if model_loaded:
-    uploaded_file = st.sidebar.file_uploader("Upload Retinal Record Asset", type=["jpg", "jpeg", "png"])
-    st.sidebar.markdown(f"""
-    <div style="margin-top:24px; padding:14px; background:{SURFACE_ALT}; border:1px solid {BORDER}; border-radius:10px;">
-        <div style="color:{TEXT_MUTED}; font-size:10.5px; text-transform:uppercase; letter-spacing:0.5px; font-weight:700; margin-bottom:6px;">Active Model</div>
-        <div style="color:{TEXT_MAIN}; font-size:12.5px; font-weight:600;">EfficientNetB3 · 5-class ICDR</div>
-        <div style="color:{TEXT_MUTED}; font-size:11px; margin-top:4px;">Grad-CAM · TTA Ensemble Uncertainty</div>
     </div>
     """, unsafe_allow_html=True)
 
-    if uploaded_file is not None:
-        file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
-        img_bgr = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
+# ---------------------------------------------------------------------
+# PATIENT HISTORY — horizontal visit chips + forecast chart
+# ---------------------------------------------------------------------
+st.markdown(f'<div class="rs-divider-label">Visit History · {patient_id}</div>', unsafe_allow_html=True)
 
-        passed_screening, message, x_center, y_center, radius = run_pre_computing_screening(img_bgr)
+hist_col, chart_col = st.columns([1.2, 1], gap="large")
 
-        if not passed_screening:
-            st.markdown(f"""
-            <div class='rs-reject'>
-                <b>❌ SYSTEM SCREENING REJECTION</b><br>{message}<br>
-                <span style='font-size:12px; font-weight:normal; opacity:0.8;'>Pipeline terminated automatically to prevent false model classification predictions on corrupted data configurations.</span>
-            </div>
-            """, unsafe_allow_html=True)
-        else:
-            img_tensor = preprocess_for_inference(img_bgr)
-
-            with st.spinner("Processing Multi-Variant Ensemble Imaging Analytics..."):
-                probabilities, consensus_status, class_uncertainty = run_tta_ensemble_inference(model, img_tensor)
-
-            pred_idx = int(np.argmax(probabilities))
-            pred_name = CLASS_NAMES[pred_idx]
-            confidence = probabilities[pred_idx] * 100
-            accent_color = SEVERITY_COLOR[pred_name]
-
-            isolated_heatmap, boundary_img, attention_index, dominant_quad, quad_pct = compute_diagnostic_graphs(
-                img_tensor, grad_model, pred_idx, img_bgr, x_center, y_center, radius
-            )
-
-            with st.spinner("Mapping Vascular Topography..."):
-                vessel_map = generate_vascular_map(img_bgr, x_center, y_center, radius)
-
-            record_logs = save_patient_record(patient_id, pred_name, confidence, attention_index)
-
-            heatmap_color = cv2.applyColorMap(isolated_heatmap, cv2.COLORMAP_JET)
-            gradcam_blend = cv2.addWeighted(heatmap_color, 0.38, img_bgr, 0.62, 0)
-
-            img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
-            gradcam_rgb = cv2.cvtColor(gradcam_blend, cv2.COLOR_BGR2RGB)
-            boundary_rgb = cv2.cvtColor(boundary_img, cv2.COLOR_BGR2RGB)
-
-            # Secondary clinical output: referable vs non-referable DR (standard screening
-            # convention — Moderate NPDR and above requires specialist referral). Derived
-            # directly from the same fused probabilities, no separate model needed.
-            referable_prob = float(np.sum([probabilities[i] for i in REFERABLE_CLASSES])) * 100.0
-            is_referable = pred_idx in REFERABLE_CLASSES
-            referral_color = DANGER if is_referable else SUCCESS
-            referral_label = "REFERABLE" if is_referable else "NON-REFERABLE"
-
-            # ---------------------------------------------------------
-            # TOP KPI STRIP — quick-glance summary before any detail
-            # ---------------------------------------------------------
-            kpi1, kpi2, kpi3, kpi4 = st.columns(4, gap="medium")
-            with kpi1:
-                st.markdown(f"""
-                <div class="rs-kpi">
-                    <div class="rs-kpi-label">Diagnostic Verdict</div>
-                    <div class="rs-kpi-value" style="color:{accent_color};">{pred_name}</div>
-                </div>""", unsafe_allow_html=True)
-            with kpi2:
-                st.markdown(f"""
-                <div class="rs-kpi">
-                    <div class="rs-kpi-label">Model Confidence</div>
-                    <div class="rs-kpi-value" style="color:{TEXT_MAIN};">{confidence:.1f}%</div>
-                </div>""", unsafe_allow_html=True)
-            with kpi3:
-                st.markdown(f"""
-                <div class="rs-kpi">
-                    <div class="rs-kpi-label">Referral Status</div>
-                    <div class="rs-kpi-value" style="color:{referral_color}; font-size:17px;">{referral_label}</div>
-                </div>""", unsafe_allow_html=True)
-            with kpi4:
-                st.markdown(f"""
-                <div class="rs-kpi">
-                    <div class="rs-kpi-label">Ensemble Consensus</div>
-                    <div class="rs-kpi-value" style="color:{INFO}; font-size:15px;">{consensus_status}</div>
-                </div>""", unsafe_allow_html=True)
-
-            st.markdown("<br>", unsafe_allow_html=True)
-
-            # ---------------------------------------------------------
-            # TABBED WORKSPACE — restructures the previous single long
-            # scroll into focused views without touching any computation
-            # ---------------------------------------------------------
-
-            # ---------------------------------------------------------
-            # Longitudinal trend pre-computation — done once, before tabs,
-            # because both the Overview tab (XAI narrative) and the History
-            # tab (forecast chart) reference these values.
-            # ---------------------------------------------------------
-            visit_stamps = [r["timestamp"].split(" ")[0] for r in record_logs]
-            attention_indices = [r["attention_index"] for r in record_logs]
-            x_indices = np.arange(len(record_logs))
-
-            # Trend forecasting requires >=3 visits to be statistically defensible.
-            # A 2-point "trend" is just a line between two dots, not evidence of velocity.
-            MIN_VISITS_FOR_TREND = 3
-            r_squared = None
-            slope = None
-            next_x = None
-            next_y_pred = None
-            if len(record_logs) >= MIN_VISITS_FOR_TREND:
-                slope, intercept = np.polyfit(x_indices, attention_indices, 1)
-                fitted = slope * x_indices + intercept
-                ss_res = np.sum((np.array(attention_indices) - fitted) ** 2)
-                ss_tot = np.sum((np.array(attention_indices) - np.mean(attention_indices)) ** 2)
-                r_squared = 1 - (ss_res / ss_tot) if ss_tot > 0 else 0.0
-
-                next_x = len(record_logs)
-                next_y_pred = max(0.0, min(100.0, slope * next_x + intercept))
-
-                # Require both a meaningful slope AND a reasonable fit before flagging acceleration
-                if slope > 1.5 and r_squared >= 0.5:
-                    trajectory_alert = "ACCELERATING"
-                elif slope > 1.5 and r_squared < 0.5:
-                    trajectory_alert = "NOISY_TREND"
-                else:
-                    trajectory_alert = "STABILIZED"
-            else:
-                trajectory_alert = "INSUFFICIENT_TIMELINE_DATA"
-
-            tab_overview, tab_probability, tab_advanced, tab_history = st.tabs(
-                ["🔬  Diagnosis Overview", "📊  Probability & Uncertainty", "🧬  Advanced Imaging", "📈  Patient History"]
-            )
-
-            # ===================== TAB 1: DIAGNOSIS OVERVIEW =====================
-            with tab_overview:
-                st.markdown("<div class='rs-section-label'>Primary Diagnostic Trackers</div>", unsafe_allow_html=True)
-                img_col1, img_col2 = st.columns(2, gap="large")
-                with img_col1:
-                    st.markdown("<span class='rs-subtle-label'>I. Base Input</span>", unsafe_allow_html=True)
-                    st.image(img_rgb, use_container_width=True)
-                with img_col2:
-                    st.markdown("<span class='rs-subtle-label-accent'>II. Grad-CAM Path Map</span>", unsafe_allow_html=True)
-                    st.image(gradcam_rgb, use_container_width=True)
-
-                st.markdown("<br>", unsafe_allow_html=True)
-                st.markdown(f"""
-                    <div class="rs-card">
-                        <p style="color: {TEXT_MUTED}; font-size: 11px; text-transform: uppercase; margin: 0; letter-spacing: 0.5px;">Diagnostic Verdict</p>
-                        <h1 style="color: {accent_color}; margin: 10px 0 6px 0; font-size: 34px; font-weight: 700;">{pred_name}</h1>
-                        <div class="rs-badge" style="background:{referral_color}22; border-color:{referral_color}; color:{referral_color}; margin-bottom:14px;">
-                            {referral_label} &nbsp;·&nbsp; {"Specialist Review Advised" if is_referable else "Routine Monitoring"} &nbsp;·&nbsp; {referable_prob:.1f}% referable-class probability
-                        </div>
-                        <p style="color: {TEXT_MUTED}; font-size: 12.5px; margin: 0;">Confidence: <b style="color:{TEXT_MAIN};">{confidence:.2f}%</b> &nbsp;|&nbsp; Attention Intensity Score: <b style="color:{TEXT_MAIN};">{attention_index:.1f}%</b></p>
-                        <p style="color: {TEXT_MAIN}; font-size: 13.5px; margin-top: 14px; line-height: 1.6;">{CLASS_DESCRIPTIONS[pred_idx]}</p>
-                    </div>
-                """, unsafe_allow_html=True)
-
-                st.markdown("<br>", unsafe_allow_html=True)
-
-                # --- Explainable AI narrative (unchanged logic, only container/styling changed) ---
-                if pred_idx == 0:
-                    xai_text = (
-                        "The Grad-CAM attention map shows no concentrated, high-intensity activation clusters within the "
-                        "fundus field — activations are diffuse and low-magnitude across the retina. In practice, this means "
-                        "the model did not lock onto any localized region resembling a lesion, which is consistent with a "
-                        "'No DR' classification rather than a positive finding the model is choosing to ignore."
-                    )
-                else:
-                    xai_text = (
-                        f"Grad-CAM traces which pixels most influenced the model's <strong>{pred_name}</strong> prediction by "
-                        f"back-propagating the class score to the final convolutional layer. The resulting attention is most "
-                        f"concentrated in the <strong>{dominant_quad} quadrant</strong>, accounting for {quad_pct:.1f}% of the "
-                        f"total activation mass inside the fundus boundary — meaning the model's decision was driven predominantly "
-                        f"by structures in that region rather than distributed evenly across the retina."
-                    )
-
-                    if trajectory_alert == "ACCELERATING":
-                        xai_text += (
-                            f" <span style='color:{DANGER}; font-weight:700;'>⚠ Longitudinal tracking across {len(record_logs)} visits "
-                            f"indicates an upward pathology velocity (+{slope:.1f}% attention-index shift per visit, fit quality R²={r_squared:.2f}). "
-                            f"This trend is flagged for clinician review — it is a statistical signal, not a diagnosis.</span>"
-                        )
-                    elif trajectory_alert == "NOISY_TREND":
-                        xai_text += (
-                            f" <span style='color:{WARN}; font-weight:600;'>A rising trend is present (+{slope:.1f}% per visit) but the "
-                            f"fit is weak (R²={r_squared:.2f}), meaning the data points don't sit close to a clean line — more visits "
-                            f"are needed before this trend can be treated as reliable.</span>"
-                        )
-                    elif trajectory_alert == "STABILIZED":
-                        xai_text += " Longitudinal tracking across visits shows no statistically meaningful upward trend in attention intensity."
-                    else:
-                        xai_text += (
-                            f" <span style='opacity:0.75;'>Longitudinal trend analysis is unavailable — at least 3 visits are required "
-                            f"for a statistically defensible trend line ({len(record_logs)} on record for this patient).</span>"
-                        )
-
-                xai_text += (
-                    " <span style='opacity:0.75; font-style:italic;'>Note: this explanation reflects where the model's attention "
-                    "was concentrated, not a confirmed clinical diagnosis — attention correlates with, but does not prove, the "
-                    "presence of a specific pathology at that location.</span>"
-                )
-
-                st.markdown(f"""
-                <div class="rs-banner" style="background: {XAI_BG}; border-color: {XAI_BORDER};">
-                    <div style="font-size: 22px; margin-top:-2px;">🧠</div>
-                    <div>
-                        <div class="rs-banner-title" style="color: {XAI_TEXT};">Explainable AI &amp; Predictive Prognostics</div>
-                        <div class="rs-banner-body" style="color: #c7d6ff;"><strong>AI Decision Rationale:</strong> {xai_text}</div>
-                    </div>
-                </div>
-                """, unsafe_allow_html=True)
-
-                st.markdown(f"""
-                <div class="rs-banner" style="background: {WARN_BG}; border-color: {WARN_BORDER};">
-                    <div style="font-size: 22px; margin-top:-2px;">📋</div>
-                    <div>
-                        <div class="rs-banner-title" style="color: {WARN};">Clinical Management Directive</div>
-                        <div class="rs-banner-body" style="color: #f3ddaa;">{CLINICAL_DIRECTIVES[pred_idx]}</div>
-                    </div>
-                </div>
-                """, unsafe_allow_html=True)
-
-            # ===================== TAB 2: PROBABILITY & UNCERTAINTY =====================
-            with tab_probability:
-                st.markdown("<div class='rs-section-label'>Grade Probabilities Matrix</div>", unsafe_allow_html=True)
-                st.markdown(f"<div class='rs-card'>", unsafe_allow_html=True)
-                for i in range(NUM_CLASSES):
-                    cname = CLASS_NAMES[i]
-                    pct = float(probabilities[i])
-                    uncertainty = float(class_uncertainty[i])
-                    is_pred = (i == pred_idx)
-                    label_color = TEXT_MAIN if is_pred else TEXT_MUTED
-                    weight = 700 if is_pred else 500
-                    st.markdown(
-                        f"<div style='font-size: 13px; color: {label_color}; display: flex; justify-content: space-between; font-weight:{weight}; margin-bottom:4px;'>"
-                        f"<span>{cname}</span><span>{pct*100:.1f}% <span style='color:{TEXT_MUTED}; font-weight:400; font-size:11px;'>(± {uncertainty:.1f})</span></span></div>",
-                        unsafe_allow_html=True
-                    )
-                    st.progress(pct)
-                st.markdown(
-                    f"<p style='color:{TEXT_MUTED}; font-size:11.5px; margin-top:12px; line-height:1.5;'>± values show predictive uncertainty (std. dev.) across the 3-view TTA ensemble — wider bands mean the augmented views disagreed more on that class.</p>",
-                    unsafe_allow_html=True
-                )
-                st.markdown("</div>", unsafe_allow_html=True)
-
-                st.markdown("<br><div class='rs-section-label'>Referral Classification</div>", unsafe_allow_html=True)
-                st.markdown(f"""
-                <div class="rs-card">
-                    <p style="color:{TEXT_MUTED}; font-size:12.5px; line-height:1.7; margin:0;">
-                        Standard DR screening convention groups the 5-class grade into a binary referral decision:
-                        <b style="color:{TEXT_MAIN};">No DR / Mild NPDR</b> → non-referable (routine monitoring), and
-                        <b style="color:{TEXT_MAIN};">Moderate NPDR and above</b> → referable (specialist review required).
-                        This patient's aggregated referable-class probability is
-                        <b style="color:{referral_color};">{referable_prob:.1f}%</b>.
-                    </p>
-                </div>
-                """, unsafe_allow_html=True)
-
-            # ===================== TAB 3: ADVANCED IMAGING =====================
-            with tab_advanced:
-                st.markdown("<div class='rs-section-label'>Vascular Topology &amp; AI ROI Focus</div>", unsafe_allow_html=True)
-                adv_col1, adv_col2 = st.columns(2, gap="large")
-                with adv_col1:
-                    st.markdown("<span class='rs-subtle-label'>Vascular Topology Map</span>", unsafe_allow_html=True)
-                    st.image(vessel_map, use_container_width=True, clamp=True)
-                with adv_col2:
-                    st.markdown(f"<span class='rs-subtle-label-accent'>AI ROI Bounding Boxes ({attention_index:.1f} Index)</span>", unsafe_allow_html=True)
-                    st.image(boundary_rgb, use_container_width=True)
-
-            # ===================== TAB 4: PATIENT HISTORY =====================
-            with tab_history:
-                hist_col1, hist_col2 = st.columns([1.3, 1], gap="large")
-                with hist_col1:
-                    st.markdown(f"<div class='rs-section-label'>Historical Tracking Summary Log — {patient_id}</div>", unsafe_allow_html=True)
-                    table_html = '<table class="rs-table"><thead><tr>'
-                    table_html += '<th>Visit Index</th>'
-                    table_html += '<th>Timestamp</th>'
-                    table_html += '<th>Diagnosis Verdict</th>'
-                    table_html += '<th>Confidence Score</th>'
-                    table_html += '<th>Attention Index</th>'
-                    table_html += '</tr></thead><tbody>'
-                    for i, r in enumerate(record_logs):
-                        table_html += '<tr>'
-                        table_html += f'<td><b>#{i+1}</b></td>'
-                        table_html += f'<td>{r["timestamp"]}</td>'
-                        table_html += f'<td>{r["diagnosis"]}</td>'
-                        table_html += f'<td>{r["confidence"]}%</td>'
-                        table_html += f'<td style="color:{ACCENT};"><b>{r["attention_index"]:.1f}%</b></td>'
-                        table_html += '</tr>'
-                    table_html += '</tbody></table>'
-                    st.markdown(table_html, unsafe_allow_html=True)
-
-                with hist_col2:
-                    st.markdown("<div class='rs-section-label'>Diagnostics Forecast (Longitudinal)</div>", unsafe_allow_html=True)
-                    fig, ax = plt.subplots(figsize=(4.2, 3.6))
-
-                    ax.plot(x_indices, attention_indices, marker='o', color=ACCENT, linewidth=2.5, label='Historical')
-
-                    if len(record_logs) >= MIN_VISITS_FOR_TREND:
-                        forecast_x = [x_indices[-1], next_x]
-                        forecast_y = [attention_indices[-1], next_y_pred]
-                        ax.plot(forecast_x, forecast_y, linestyle='--', color=DANGER, linewidth=2, marker='x', label='Forecast')
-                        ax.legend(facecolor=SURFACE, edgecolor=BORDER, labelcolor=TEXT_MUTED, fontsize=7)
-
-                    ax.set_xticks(range(len(record_logs) + (1 if len(record_logs) >= MIN_VISITS_FOR_TREND else 0)))
-                    extended_stamps = visit_stamps + ["(Next)"] if len(record_logs) >= MIN_VISITS_FOR_TREND else visit_stamps
-                    ax.set_xticklabels(extended_stamps, rotation=25, ha='right', fontsize=8)
-                    ax.set_ylim(-5, 105)
-                    ax.grid(True, linestyle='--', alpha=0.2, color=TEXT_MUTED)
-
-                    fig.patch.set_facecolor(SURFACE)
-                    ax.set_facecolor(SURFACE_ALT)
-                    ax.spines['bottom'].set_color(BORDER)
-                    ax.spines['left'].set_color(BORDER)
-                    ax.spines['top'].set_visible(False)
-                    ax.spines['right'].set_visible(False)
-                    ax.tick_params(colors=TEXT_MUTED, labelsize=8)
-                    st.pyplot(fig)
-                    plt.close(fig)
-
-            st.markdown("<br>", unsafe_allow_html=True)
-
-            # --- DYNAMIC EXPORT BUTTON ASSEMBLIES ---
-            ist_timezone = pytz.timezone('Asia/Kolkata')
-            current_date_ist = datetime.now(ist_timezone).strftime('%Y%m%d')
-
-            pdf_bytes = generate_clinical_pdf(
-                patient_id, pred_name, confidence, attention_index,
-                dominant_quad, quad_pct, CLINICAL_DIRECTIVES[pred_idx], consensus_status
-            )
-
-            st.download_button(
-                label="📥  Export Signed Clinical Summary PDF",
-                data=pdf_bytes,
-                file_name=f"RetiScan_{patient_id}_{current_date_ist}.pdf",
-                mime="application/pdf",
-                use_container_width=True
-            )
-    else:
-        st.markdown(f"""
-        <div class="rs-card" style="text-align:center; padding:70px 30px; margin-top:10px;">
-            <div style="font-size:36px; margin-bottom:12px;">🖼️</div>
-            <div style="color:{TEXT_MAIN}; font-size:16px; font-weight:700; margin-bottom:6px;">No retinal image loaded</div>
-            <div style="color:{TEXT_MUTED}; font-size:13px;">Upload a fundus image from the Clinical Control Hub sidebar to begin analysis.</div>
+with hist_col:
+    chips_html = ""
+    for i, r in enumerate(record_logs):
+        sev_color = SEVERITY_COLOR.get(r["diagnosis"], TEXT_MUTED)
+        chips_html += f"""
+        <div class="rs-timeline-chip">
+            <span style="color:{TEXT_FAINT}; font-size:10px; text-transform:uppercase; font-weight:700;">Visit #{i+1} · {r['timestamp']}</span>
+            <span style="color:{sev_color}; font-size:14px; font-weight:800;">{r['diagnosis']}</span>
+            <span style="color:{TEXT_MUTED}; font-size:11px;">Conf {r['confidence']}% · Attn {r['attention_index']:.1f}%</span>
         </div>
-        """, unsafe_allow_html=True)
-else:
-    st.info("👈 Complete the entry inputs in the Clinical Control Hub sidebar to initialize data processing pathways.")
+        """
+    st.markdown(chips_html, unsafe_allow_html=True)
+
+with chart_col:
+    fig, ax = plt.subplots(figsize=(4.6, 3.0))
+    ax.plot(x_indices, attention_indices, marker='o', color=ACCENT, linewidth=2.5, label='Historical')
+    if len(record_logs) >= MIN_VISITS_FOR_TREND:
+        forecast_x = [x_indices[-1], next_x]
+        forecast_y = [attention_indices[-1], next_y_pred]
+        ax.plot(forecast_x, forecast_y, linestyle='--', color=DANGER, linewidth=2, marker='x', label='Forecast')
+        ax.legend(facecolor=SURFACE, edgecolor=BORDER, labelcolor=TEXT_MUTED, fontsize=7)
+    ax.set_xticks(range(len(record_logs) + (1 if len(record_logs) >= MIN_VISITS_FOR_TREND else 0)))
+    extended_stamps = visit_stamps + ["(Next)"] if len(record_logs) >= MIN_VISITS_FOR_TREND else visit_stamps
+    ax.set_xticklabels(extended_stamps, rotation=25, ha='right', fontsize=8)
+    ax.set_ylim(-5, 105)
+    ax.grid(True, linestyle='--', alpha=0.15, color=TEXT_MUTED)
+    fig.patch.set_facecolor(BG)
+    ax.set_facecolor(SURFACE)
+    ax.spines['bottom'].set_color(BORDER)
+    ax.spines['left'].set_color(BORDER)
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    ax.tick_params(colors=TEXT_MUTED, labelsize=8)
+    st.pyplot(fig)
+    plt.close(fig)
+
+# ---------------------------------------------------------------------
+# EXPORT
+# ---------------------------------------------------------------------
+ist_timezone = pytz.timezone('Asia/Kolkata')
+current_date_ist = datetime.now(ist_timezone).strftime('%Y%m%d')
+
+pdf_bytes = generate_clinical_pdf(
+    patient_id, pred_name, confidence, attention_index,
+    dominant_quad, quad_pct, CLINICAL_DIRECTIVES[pred_idx], consensus_status
+)
+
+st.markdown("<br>", unsafe_allow_html=True)
+st.download_button(
+    label="📥  Export Signed Clinical Summary PDF",
+    data=pdf_bytes,
+    file_name=f"RetiScan_{patient_id}_{current_date_ist}.pdf",
+    mime="application/pdf",
+    use_container_width=True
+)
 
 # =====================================================================
-#  FOOTER — MODEL CARD & AUDIT TRAIL (compact, collapsed by default)
+#  FOOTER — Model Card & Audit Trail (compact, collapsed by default)
 # =====================================================================
-st.markdown("<div style='margin-top:38px;'></div>", unsafe_allow_html=True)
+st.markdown("<div style='margin-top:30px;'></div>", unsafe_allow_html=True)
 with st.expander("🗂️  Model Card & Audit Trail", expanded=False):
     mc_col1, mc_col2 = st.columns(2, gap="large")
     with mc_col1:
         st.markdown(f"""
-        <div class="rs-footer-card">
-            <p class="rs-subtle-label-accent" style="margin-bottom:10px;">Model Details</p>
-            <p style="font-size:12.5px; color:{TEXT_MUTED}; line-height:1.85; margin:0;">
-                <b style="color:{TEXT_MAIN};">Architecture:</b> {MODEL_CARD['architecture']}<br>
-                <b style="color:{TEXT_MAIN};">Input:</b> {MODEL_CARD['input_resolution']}<br>
-                <b style="color:{TEXT_MAIN};">Training Data:</b> {MODEL_CARD['training_dataset']}<br>
-                <b style="color:{TEXT_MAIN};">Task:</b> {MODEL_CARD['num_classes']}<br>
-                <b style="color:{TEXT_MAIN};">Loss:</b> {MODEL_CARD['loss_function']}<br>
-                <b style="color:{TEXT_MAIN};">Reported Accuracy:</b> {MODEL_CARD['reported_accuracy']}<br>
-                <b style="color:{TEXT_MAIN};">Explainability:</b> {MODEL_CARD['explainability_method']}
-                {f" — active layer: <code>{gradcam_layer_name}</code>" if model_loaded else ""}<br>
-                <b style="color:{TEXT_MAIN};">Uncertainty Estimate:</b> {MODEL_CARD['uncertainty_method']}
-            </p>
-        </div>
+        <p style="font-size:12.5px; color:{TEXT_MUTED}; line-height:1.9; margin:0;">
+            <b style="color:{TEXT_MAIN};">Architecture:</b> {MODEL_CARD['architecture']}<br>
+            <b style="color:{TEXT_MAIN};">Input:</b> {MODEL_CARD['input_resolution']}<br>
+            <b style="color:{TEXT_MAIN};">Training Data:</b> {MODEL_CARD['training_dataset']}<br>
+            <b style="color:{TEXT_MAIN};">Task:</b> {MODEL_CARD['num_classes']}<br>
+            <b style="color:{TEXT_MAIN};">Loss:</b> {MODEL_CARD['loss_function']}<br>
+            <b style="color:{TEXT_MAIN};">Reported Accuracy:</b> {MODEL_CARD['reported_accuracy']}<br>
+            <b style="color:{TEXT_MAIN};">Explainability:</b> {MODEL_CARD['explainability_method']} — active layer: <code>{gradcam_layer_name}</code><br>
+            <b style="color:{TEXT_MAIN};">Uncertainty Estimate:</b> {MODEL_CARD['uncertainty_method']}
+        </p>
         """, unsafe_allow_html=True)
     with mc_col2:
         limitations_html = "".join([f"<li style='margin-bottom:6px;'>{item}</li>" for item in MODEL_CARD["known_limitations"]])
         st.markdown(f"""
-        <div class="rs-footer-card">
-            <p class="rs-subtle-label-accent" style="margin-bottom:10px;">Known Limitations</p>
-            <ul style="font-size:12px; color:{TEXT_MUTED}; line-height:1.6; margin:0; padding-left:16px;">
-                {limitations_html}
-            </ul>
-            <p class="rs-subtle-label-accent" style="margin: 14px 0 6px 0;">Intended Use</p>
-            <p style="font-size:12px; color:{TEXT_MUTED}; line-height:1.6; margin:0;">{MODEL_CARD['intended_use']}</p>
-        </div>
+        <p style="color:{TEXT_MUTED}; font-size:11px; text-transform:uppercase; letter-spacing:0.6px; font-weight:800; margin-bottom:8px;">Known Limitations</p>
+        <ul style="font-size:12px; color:{TEXT_MUTED}; line-height:1.6; margin:0; padding-left:16px;">{limitations_html}</ul>
+        <p style="color:{TEXT_MUTED}; font-size:11px; text-transform:uppercase; letter-spacing:0.6px; font-weight:800; margin:14px 0 6px 0;">Intended Use</p>
+        <p style="font-size:12px; color:{TEXT_MUTED}; line-height:1.6; margin:0;">{MODEL_CARD['intended_use']}</p>
         """, unsafe_allow_html=True)
 
 st.markdown(f"""
-<div style="text-align:center; padding: 22px 0 6px 0; color:{TEXT_MUTED}; font-size:11px; letter-spacing:0.3px;">
+<div style="text-align:center; padding: 22px 0 6px 0; color:{TEXT_FAINT}; font-size:11px; letter-spacing:0.3px;">
     RetiScan Pro v5 &nbsp;·&nbsp; Decision-support tool for DR screening triage &nbsp;·&nbsp; Not a standalone diagnostic device
+    &nbsp;·&nbsp; Session: {datetime.now(pytz.timezone('Asia/Kolkata')).strftime('%d %b %Y, %H:%M IST')}
 </div>
 """, unsafe_allow_html=True)
