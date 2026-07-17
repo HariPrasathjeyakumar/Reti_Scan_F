@@ -5,6 +5,7 @@ import cv2
 import os
 import gdown
 import json
+import hashlib
 import matplotlib.pyplot as plt
 import pytz
 from datetime import datetime
@@ -136,8 +137,6 @@ st.markdown(f"""
     .stExpander summary {{ color: {TEXT_MAIN} !important; font-weight: 700 !important; }}
 
     /* ============ Misc widgets ============ */
-    .stProgress > div > div {{ background: linear-gradient(90deg, {ACCENT}, {ACCENT_DEEP}) !important; }}
-    .stProgress > div {{ background-color: {SURFACE_ALT} !important; }}
     hr {{ border-color: {BORDER} !important; }}
     ::-webkit-scrollbar {{ width: 8px; height: 8px; }}
     ::-webkit-scrollbar-thumb {{ background-color: {BORDER}; border-radius: 8px; }}
@@ -194,6 +193,25 @@ st.markdown(f"""
     .rs-rail-body {{ font-size: 13.5px; line-height: 1.65; color: {TEXT_MAIN}; }}
 
     .rs-prob-row {{ display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 5px; }}
+
+    /* ============ Custom amber probability bar (replaces st.progress) ============
+       st.progress()'s internal DOM markup varies across Streamlit versions, so CSS
+       targeting it can fail to reach the actual fill element, leaving Streamlit's
+       default blue visible underneath the intended amber gradient. Using a plain
+       div-based bar here removes that dependency entirely. */
+    .rs-bar-track {{
+        width: 100%; height: 8px; border-radius: 6px;
+        background: {SURFACE_ALT}; border: 1px solid {BORDER};
+        overflow: hidden; margin-bottom: 14px;
+    }}
+    .rs-bar-fill {{
+        height: 100%; border-radius: 6px;
+        background: linear-gradient(90deg, {ACCENT}, {ACCENT_DEEP});
+    }}
+    .rs-bar-fill-muted {{
+        height: 100%; border-radius: 6px;
+        background: linear-gradient(90deg, {TEXT_FAINT}, {BORDER});
+    }}
 
     .rs-reject {{
         background: {SURFACE}; border-left: 4px solid {DANGER}; border-radius: 10px;
@@ -576,42 +594,102 @@ if uploaded_file is None:
 file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
 img_bgr = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
 
-passed_screening, message, x_center, y_center, radius = run_pre_computing_screening(img_bgr)
+# ---------------------------------------------------------------------
+# FIX: prevent a new "visit" from being logged on every rerun.
+#
+# Streamlit reruns the ENTIRE script on any widget interaction — including
+# just clicking the "Grad-CAM Overlay" / "ROI Boundaries" radio buttons
+# further down the page. Previously, the full inference pipeline (and
+# save_patient_record, which appends to patient_history.json) executed
+# unconditionally on every rerun, so switching the image view silently
+# created a brand-new visit each time.
+#
+# Fix: compute a content hash of the uploaded image and use it, together
+# with the patient ID, as a cache key in st.session_state. The heavy
+# pipeline (inference, Grad-CAM, vascular map, PDF prep, and the visit-
+# history write) now only runs once per genuinely new (patient, image)
+# pair. Reruns triggered by the radio buttons simply reuse the cached
+# results instead of recomputing and re-logging.
+# ---------------------------------------------------------------------
+image_hash = hashlib.md5(file_bytes.tobytes() if hasattr(file_bytes, "tobytes") else bytes(file_bytes)).hexdigest()
+cache_key = (patient_id, image_hash)
 
-if not passed_screening:
-    st.markdown(f"""
-    <div class='rs-reject'>
-        <b style="color:{DANGER};">✕ SCREENING REJECTED</b><br><br>{message}<br>
-        <span style='font-size:12px; opacity:0.75;'>Pipeline terminated automatically to prevent false model classification predictions on corrupted data configurations.</span>
-    </div>
-    """, unsafe_allow_html=True)
-    st.stop()
+if st.session_state.get("rs_cache_key") != cache_key:
+    passed_screening, message, x_center, y_center, radius = run_pre_computing_screening(img_bgr)
 
-img_tensor = preprocess_for_inference(img_bgr)
+    if not passed_screening:
+        # Don't cache a rejection as a "processed" result — just show it and stop.
+        st.session_state.pop("rs_cache_key", None)
+        st.session_state.pop("rs_cache_data", None)
+        st.markdown(f"""
+        <div class='rs-reject'>
+            <b style="color:{DANGER};">✕ SCREENING REJECTED</b><br><br>{message}<br>
+            <span style='font-size:12px; opacity:0.75;'>Pipeline terminated automatically to prevent false model classification predictions on corrupted data configurations.</span>
+        </div>
+        """, unsafe_allow_html=True)
+        st.stop()
 
-with st.spinner("Processing Multi-Variant Ensemble Imaging Analytics..."):
-    probabilities, consensus_status, class_uncertainty = run_tta_ensemble_inference(model, img_tensor)
+    img_tensor = preprocess_for_inference(img_bgr)
 
-pred_idx = int(np.argmax(probabilities))
-pred_name = CLASS_NAMES[pred_idx]
-confidence = probabilities[pred_idx] * 100
-accent_color = SEVERITY_COLOR[pred_name]
+    with st.spinner("Processing Multi-Variant Ensemble Imaging Analytics..."):
+        probabilities, consensus_status, class_uncertainty = run_tta_ensemble_inference(model, img_tensor)
 
-isolated_heatmap, boundary_img, attention_index, dominant_quad, quad_pct = compute_diagnostic_graphs(
-    img_tensor, grad_model, pred_idx, img_bgr, x_center, y_center, radius
-)
+    pred_idx = int(np.argmax(probabilities))
+    pred_name = CLASS_NAMES[pred_idx]
+    confidence = probabilities[pred_idx] * 100
 
-with st.spinner("Mapping Vascular Topography..."):
-    vessel_map = generate_vascular_map(img_bgr, x_center, y_center, radius)
+    isolated_heatmap, boundary_img, attention_index, dominant_quad, quad_pct = compute_diagnostic_graphs(
+        img_tensor, grad_model, pred_idx, img_bgr, x_center, y_center, radius
+    )
 
-record_logs = save_patient_record(patient_id, pred_name, confidence, attention_index)
+    with st.spinner("Mapping Vascular Topography..."):
+        vessel_map = generate_vascular_map(img_bgr, x_center, y_center, radius)
 
-heatmap_color = cv2.applyColorMap(isolated_heatmap, cv2.COLORMAP_JET)
-gradcam_blend = cv2.addWeighted(heatmap_color, 0.38, img_bgr, 0.62, 0)
+    # This is now the ONE place a new visit gets appended — guarded by the cache check above.
+    record_logs = save_patient_record(patient_id, pred_name, confidence, attention_index)
 
-img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
-gradcam_rgb = cv2.cvtColor(gradcam_blend, cv2.COLOR_BGR2RGB)
-boundary_rgb = cv2.cvtColor(boundary_img, cv2.COLOR_BGR2RGB)
+    heatmap_color = cv2.applyColorMap(isolated_heatmap, cv2.COLORMAP_JET)
+    gradcam_blend = cv2.addWeighted(heatmap_color, 0.38, img_bgr, 0.62, 0)
+
+    img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
+    gradcam_rgb = cv2.cvtColor(gradcam_blend, cv2.COLOR_BGR2RGB)
+    boundary_rgb = cv2.cvtColor(boundary_img, cv2.COLOR_BGR2RGB)
+
+    st.session_state["rs_cache_key"] = cache_key
+    st.session_state["rs_cache_data"] = {
+        "probabilities": probabilities,
+        "consensus_status": consensus_status,
+        "class_uncertainty": class_uncertainty,
+        "pred_idx": pred_idx,
+        "pred_name": pred_name,
+        "confidence": confidence,
+        "attention_index": attention_index,
+        "dominant_quad": dominant_quad,
+        "quad_pct": quad_pct,
+        "record_logs": record_logs,
+        "img_rgb": img_rgb,
+        "gradcam_rgb": gradcam_rgb,
+        "boundary_rgb": boundary_rgb,
+        "vessel_map": vessel_map,
+    }
+
+# Pull the (possibly freshly-computed, possibly cached) result set for rendering.
+cached = st.session_state["rs_cache_data"]
+probabilities      = cached["probabilities"]
+consensus_status   = cached["consensus_status"]
+class_uncertainty  = cached["class_uncertainty"]
+pred_idx           = cached["pred_idx"]
+pred_name          = cached["pred_name"]
+confidence         = cached["confidence"]
+attention_index    = cached["attention_index"]
+dominant_quad      = cached["dominant_quad"]
+quad_pct           = cached["quad_pct"]
+record_logs        = cached["record_logs"]
+img_rgb            = cached["img_rgb"]
+gradcam_rgb        = cached["gradcam_rgb"]
+boundary_rgb       = cached["boundary_rgb"]
+vessel_map         = cached["vessel_map"]
+accent_color       = SEVERITY_COLOR[pred_name]
 
 # Secondary clinical output: referable vs non-referable DR (standard screening
 # convention — Moderate NPDR and above requires specialist referral). Derived
@@ -647,6 +725,9 @@ st.markdown(f"""
 # ---------------------------------------------------------------------
 # VISUAL EVIDENCE — segmented switcher (pill radio) instead of a
 # side-by-side image grid; asymmetric split with the narrative rail.
+# Switching this radio button now only triggers a rerun that reads
+# from st.session_state["rs_cache_data"] above — it can no longer
+# re-run inference or write a new visit record.
 # ---------------------------------------------------------------------
 st.markdown('<div class="rs-divider-label">Visual Evidence</div>', unsafe_allow_html=True)
 
@@ -674,13 +755,14 @@ with evidence_col:
         is_pred = (i == pred_idx)
         label_color = TEXT_MAIN if is_pred else TEXT_MUTED
         weight = 800 if is_pred else 500
+        bar_fill_class = "rs-bar-fill" if is_pred else "rs-bar-fill-muted"
         st.markdown(
-            f"<div class='rs-prob-row'><span style='color:{label_color}; font-weight:{weight};'>{cname}</span>"
-            f"<span style='color:{label_color}; font-weight:{weight};'>{pct*100:.1f}% "
-            f"<span style='color:{TEXT_FAINT}; font-weight:400; font-size:11px;'>(± {uncertainty:.1f})</span></span></div>",
+            f"""<div class='rs-prob-row'><span style='color:{label_color}; font-weight:{weight};'>{cname}</span>
+            <span style='color:{label_color}; font-weight:{weight};'>{pct*100:.1f}%
+            <span style='color:{TEXT_FAINT}; font-weight:400; font-size:11px;'>(± {uncertainty:.1f})</span></span></div>
+            <div class="rs-bar-track"><div class="{bar_fill_class}" style="width:{max(pct*100, 1.5):.2f}%;"></div></div>""",
             unsafe_allow_html=True
         )
-        st.progress(pct)
     st.markdown(
         f"<p style='color:{TEXT_FAINT}; font-size:11.5px; margin-top:10px; line-height:1.5;'>± values reflect predictive uncertainty (std. dev.) across the 3-view TTA ensemble.</p>",
         unsafe_allow_html=True
