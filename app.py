@@ -944,7 +944,7 @@ with st.expander("🗂️  Model Card & Audit Trail", expanded=False):
 st.markdown("<div style='margin-top:14px;'></div>", unsafe_allow_html=True)
 _p2_col1, _p2_col2 = st.columns([1, 5])
 with _p2_col1:
-    with st.popover("  Phase-2 working Roadmap"):
+    with st.popover("  Phase-2 Roadmap"):
         st.markdown(f"""
         <div style="font-size:12.5px; color:{TEXT_MUTED}; line-height:1.8;">
         <b style="color:{TEXT_MAIN};">Cloud Database & Security Migration</b><br>
