@@ -12,7 +12,7 @@ from datetime import datetime
 from fpdf import FPDF
 from skimage.filters import frangi  # Mathematical vascular extraction
 
-# Set page configurations — wide canvas, no sidebar
+# Set page configurations — wide canvas, no sidebar (structure is fully custom)
 st.set_page_config(
     page_title="RetiScan Pro v5",
     page_icon="🩺",
@@ -21,7 +21,7 @@ st.set_page_config(
 )
 
 # =====================================================================
-#  0. DESIGN TOKENS — graphite + amber/emerald duotone
+#  0. DESIGN TOKENS — graphite + amber/emerald duotone (distinct identity)
 # =====================================================================
 BG           = "#0d0e12"
 SURFACE      = "#16171d"
@@ -112,7 +112,7 @@ st.markdown(f"""
     }}
     .stDownloadButton button p {{ color: #201200 !important; font-weight: 800 !important; }}
 
-    /* ============ Radio Segmented Control ============ */
+    /* ============ Radio-as-segmented-control (image switcher) ============ */
     div[role="radiogroup"] {{
         display: flex; gap: 6px; background: {SURFACE_ALT};
         padding: 5px; border-radius: 12px; border: 1px solid {BORDER};
@@ -136,12 +136,12 @@ st.markdown(f"""
     }}
     .stExpander summary {{ color: {TEXT_MAIN} !important; font-weight: 700 !important; }}
 
-    /* ============ Misc ============ */
+    /* ============ Misc widgets ============ */
     hr {{ border-color: {BORDER} !important; }}
     ::-webkit-scrollbar {{ width: 8px; height: 8px; }}
     ::-webkit-scrollbar-thumb {{ background-color: {BORDER}; border-radius: 8px; }}
 
-    /* ============ Custom Layout Elements ============ */
+    /* ============ Custom layout primitives ============ */
     .rs-hero {{
         display: flex; align-items: center; gap: 16px;
         padding: 26px 0 22px 0;
@@ -194,6 +194,11 @@ st.markdown(f"""
 
     .rs-prob-row {{ display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 5px; }}
 
+    /* ============ Custom amber probability bar (replaces st.progress) ============
+       st.progress()'s internal DOM markup varies across Streamlit versions, so CSS
+       targeting it can fail to reach the actual fill element, leaving Streamlit's
+       default blue visible underneath the intended amber gradient. Using a plain
+       div-based bar here removes that dependency entirely. */
     .rs-bar-track {{
         width: 100%; height: 8px; border-radius: 6px;
         background: {SURFACE_ALT}; border: 1px solid {BORDER};
@@ -240,15 +245,20 @@ CLASS_NAMES = {
 
 CLASS_DESCRIPTIONS = {
     0: "No visible signs of diabetic retinopathy. The retinal vasculature, macula, and optic disc region show no microaneurysms, "
-       "hemorrhages, hard exudates, or neovascularization within the analyzed field.",
-    1: "Mild Non-Proliferative DR — characterized by isolated microaneurysms: small, localized outpouchings in retinal capillary walls "
-       "caused by chronic hyperglycemic damage. No exudates or gross hemorrhages are typically present yet.",
-    2: "Moderate Non-Proliferative DR — progressive stage with multiple microaneurysms, intraretinal hemorrhages ('dot-and-blot' pattern), "
-       "and early vascular abnormalities. Threshold for mandatory specialist referral.",
-    3: "Severe Non-Proliferative DR — extensive hemorrhages across multiple quadrants, venous beading, or intraretinal microvascular "
-       "abnormalities (IRMA). Elevated short-term risk of progressing to proliferative disease.",
-    4: "Proliferative DR — advanced stage defined by neovascularization (fragile new blood vessel proliferation). Prone to leakage and rupture, "
-       "creating immediate risk of vitreous hemorrhage or tractional retinal detachment."
+       "hemorrhages, hard exudates, or neovascularization within the analyzed field. This represents the healthiest end of the "
+       "ICDR (International Clinical Diabetic Retinopathy) severity scale.",
+    1: "Mild Non-Proliferative DR — the earliest detectable stage. Characterized by isolated microaneurysms: small, localized "
+       "balloon-like outpouchings in retinal capillary walls caused by chronic hyperglycemic damage to vessel structure. "
+       "No hemorrhages or exudates are typically present yet, and vision is usually unaffected at this stage.",
+    2: "Moderate Non-Proliferative DR — a progressive stage marked by an increasing number of microaneurysms, scattered "
+       "intraretinal hemorrhages ('dot-and-blot' pattern), and early microvascular abnormalities. This is the threshold at "
+       "which most screening guidelines recommend specialist referral, as the risk of progression to sight-threatening disease rises.",
+    3: "Severe Non-Proliferative DR — extensive hemorrhages and microaneurysms across multiple retinal quadrants, along with "
+       "venous beading and intraretinal microvascular abnormalities (IRMA). This stage carries a substantially elevated short-term "
+       "risk of progressing to proliferative disease and requires prompt ophthalmological evaluation.",
+    4: "Proliferative DR — the most advanced stage, defined by neovascularization: fragile, abnormal new blood vessels growing "
+       "in response to retinal ischemia. These vessels are prone to leakage and rupture, creating a high risk of vitreous "
+       "hemorrhage and tractional retinal detachment if left untreated. This stage constitutes a medical emergency."
 }
 
 CLINICAL_DIRECTIVES = {
@@ -259,6 +269,8 @@ CLINICAL_DIRECTIVES = {
     4: "CRITICAL ALERT: Emergency vitreo-retinal surgical evaluation indicated. High immediate risk of permanent tractional detachment."
 }
 
+# Clinical referral mapping — Moderate NPDR and above requires specialist referral
+# (standard binary screening convention used alongside 5-class ICDR grading)
 REFERABLE_CLASSES = {2, 3, 4}
 NON_REFERABLE_CLASSES = {0, 1}
 
@@ -267,17 +279,18 @@ MODEL_CARD = {
     "input_resolution": f"{IMG_SIZE} x {IMG_SIZE} RGB",
     "training_dataset": "APTOS 2019 Blindness Detection dataset",
     "num_classes": "5-class ICDR severity scale (No DR → Proliferative DR)",
-    "loss_function": "Categorical Crossentropy / Focal Loss",
-    "reported_accuracy": "~89% top-1 accuracy on validation split",
-    "explainability_method": "Grad-CAM (gradient-weighted class activation mapping)",
-    "uncertainty_method": "Test-Time Augmentation (TTA) ensemble variance across 3 views",
+    "loss_function": "Categorical Crossentropy with label smoothing (focal-loss variant explored)",
+    "reported_accuracy": "~89% top-1 accuracy on held-out validation split (5-class grading)",
+    "explainability_method": "Grad-CAM (gradient-weighted class activation mapping), single convolutional layer",
+    "uncertainty_method": "Test-Time Augmentation (TTA) ensemble variance across 3 augmented views (identity, horizontal flip, gamma shift)",
     "known_limitations": [
-        "Trained primarily on APTOS 2019 dataset; cross-camera distribution shifts require local validation.",
-        "Grad-CAM indicates predictive correlation regions rather than explicit segmentations.",
-        "Longitudinal trend forecasting requires at least 3 visits to calculate reliable slopes.",
-        "Not a standalone diagnostic system. Intended as a decision-support triage tool."
+        "Trained and validated on a single dataset (APTOS 2019); performance on images from other cameras/populations has not been externally verified.",
+        "Grad-CAM highlights regions correlated with the prediction — it does not guarantee the highlighted region is the true clinical lesion.",
+        "Longitudinal trend forecasting requires at least 3 visits to be statistically meaningful; earlier visits are descriptive only.",
+        "The model has not been evaluated for calibration (i.e. whether a 90% confidence score genuinely corresponds to 90% real-world accuracy).",
+        "Not a diagnostic device. Intended as a decision-support and triage aid alongside qualified clinical judgement.",
     ],
-    "intended_use": "Screening triage support for diabetic retinopathy grading to prioritize specialist review.",
+    "intended_use": "Screening triage support for diabetic retinopathy grading, to prioritize specialist review — not a replacement for ophthalmologist diagnosis.",
 }
 
 def focal_loss():
@@ -328,6 +341,7 @@ def save_patient_record(p_id, diagnosis, confidence, attention_index):
     history = load_patient_history()
     if p_id not in history: history[p_id] = []
 
+    # Timezone alignment: Force conversion to Indian Standard Time (IST)
     ist_timezone = pytz.timezone('Asia/Kolkata')
     current_time_ist = datetime.now(ist_timezone).strftime("%Y-%m-%d %H:%M")
 
@@ -342,37 +356,20 @@ def save_patient_record(p_id, diagnosis, confidence, attention_index):
     return history[p_id]
 
 # =====================================================================
-#  3. PROCESSING ENGINE & METRICS (NORMALIZATION FIX APPLIED)
+#  3. PROCESSING ENGINE & METRICS (IQA, VASCULAR, TTA, PDF)
 # =====================================================================
 def preprocess_for_inference(img_bgr):
-    """
-    CRITICAL FIX: Resizes and converts image array into [0, 1] normalized float tensor.
-    Unscaled [0, 255] float arrays cause saturated neuron predictions (forcing 'No DR').
-    """
     rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
     rgb = cv2.resize(rgb, (IMG_SIZE, IMG_SIZE))
-    
-    # Scale pixels strictly to [0.0, 1.0]
-    tensor_norm = rgb.astype(np.float32) / 255.0
-    return np.expand_dims(tensor_norm, axis=0)
+    tensor = rgb.astype(np.float32)
+    return np.expand_dims(tensor, axis=0)
 
-def run_tta_ensemble_inference(model_obj, base_tensor):
-    """
-    Runs Test-Time Augmentation on normalized input tensors.
-    """
-    # Ensure input tensor is normalized in [0, 1] range
-    if np.max(base_tensor) > 1.0:
-        base_tensor = base_tensor / 255.0
-
-    pred_base = model_obj.predict_on_batch(base_tensor)[0]
-    
-    # Horizontal Flip View
+def run_tta_ensemble_inference(model, base_tensor):
+    pred_base = model.predict_on_batch(base_tensor)[0]
     flipped_tensor = np.flip(base_tensor, axis=2)
-    pred_flipped = model_obj.predict_on_batch(flipped_tensor)[0]
-    
-    # Gamma Shift View (clipped to [0.0, 1.0])
-    gamma_tensor = np.clip(base_tensor * 1.05, 0.0, 1.0)
-    pred_gamma = model_obj.predict_on_batch(gamma_tensor)[0]
+    pred_flipped = model.predict_on_batch(flipped_tensor)[0]
+    gamma_tensor = np.clip(base_tensor * 1.05, 0.0, 255.0)
+    pred_gamma = model.predict_on_batch(gamma_tensor)[0]
 
     fused_probabilities = (pred_base + pred_flipped + pred_gamma) / 3.0
 
@@ -380,6 +377,7 @@ def run_tta_ensemble_inference(model_obj, base_tensor):
     mean_variance = np.mean(per_class_variance)
     consensus_badge = "HIGH CONSENSUS" if mean_variance < 0.02 else "BORDERLINE VERIFICATION REQUIRED"
 
+    # Per-class uncertainty band expressed as +/- percentage points (std dev across TTA views)
     per_class_uncertainty_pct = np.sqrt(per_class_variance) * 100.0
 
     return fused_probabilities, consensus_badge, per_class_uncertainty_pct
@@ -419,19 +417,16 @@ def generate_clinical_pdf(p_id, verdict, conf, attn_idx, quad, quad_pct, directi
     return bytes(pdf.output())
 
 def run_pre_computing_screening(img_bgr):
-    """
-    Quality gate checks with calibrated thresholds for high-contrast retinal pathology.
-    """
     h, w, _ = img_bgr.shape
     gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
 
     blur_score = cv2.Laplacian(gray, cv2.CV_64F).var()
-    if blur_score < 25.0:  # Calibrated blur variance threshold
-        return False, f"REJECTED: Image fails focal clarity standards (Blur Variance: {blur_score:.1f}). Please recapture.", None, None, None
+    if blur_score < 45.0:
+        return False, f"REJECTED: Asset fails focal clarity standards (Blur Variance: {blur_score:.1f}). Please recapture.", None, None, None
 
     mean_brightness = np.mean(gray)
-    if mean_brightness < 8:
-        return False, "REJECTED: Low image luminance exposure (Image too dark).", None, None, None
+    if mean_brightness < 10:
+        return False, "REJECTED: Low asset luminance exposure (Image too dark).", None, None, None
 
     _, thresh = cv2.threshold(gray, 15, 255, cv2.THRESH_BINARY)
     contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -443,8 +438,8 @@ def run_pre_computing_screening(img_bgr):
     contour_area = cv2.contourArea(largest_contour)
     total_area = h * w
 
-    if contour_area < (total_area * 0.12):
-        return False, "REJECTED: Fundus structure area is too small relative to frame.", None, None, None
+    if contour_area < (total_area * 0.15):
+        return False, "REJECTED: Geometry unverified. Extracted fundus structure area is too small.", None, None, None
 
     (x_center, y_center), radius = cv2.minEnclosingCircle(largest_contour)
 
@@ -453,8 +448,8 @@ def run_pre_computing_screening(img_bgr):
 
     mean_b, mean_g, mean_r, _ = cv2.mean(img_bgr, mask=circle_mask)
 
-    if mean_b > 115:
-        return False, f"REJECTED: Biological profile mismatch (Anomalous blue channel reflection detected).", None, None, None
+    if mean_b > 90 or mean_r < mean_g:
+        return False, f"REJECTED: Biological profile mismatch. Asset lacks standard retinal pigmentation signatures (High anomalous blue/green reflection detected).", None, None, None
 
     return True, "PASSED", x_center, y_center, radius
 
@@ -476,18 +471,11 @@ def generate_vascular_map(img_bgr, x_center, y_center, radius):
     clean_vessel_map = cv2.bitwise_and(vesselness_norm, perfect_circle_mask)
     return clean_vessel_map
 
-def compute_diagnostic_graphs(img_tensor, grad_model_obj, pred_idx, img_bgr, x_center, y_center, radius):
-    """
-    Computes Grad-CAM activation maps using normalized inputs [0, 1].
-    """
+def compute_diagnostic_graphs(img_tensor, grad_model, pred_idx, img_bgr, x_center, y_center, radius):
     h, w, _ = img_bgr.shape
 
-    # Ensure input tensor is normalized in [0, 1]
-    if np.max(img_tensor) > 1.0:
-        img_tensor = img_tensor / 255.0
-
     with tf.GradientTape() as tape:
-        conv_outputs, model_predictions = grad_model_obj(img_tensor)
+        conv_outputs, model_predictions = grad_model(img_tensor)
         loss = model_predictions[:, pred_idx]
 
     grads = tape.gradient(loss, conv_outputs)
@@ -554,10 +542,12 @@ def compute_diagnostic_graphs(img_tensor, grad_model_obj, pred_idx, img_bgr, x_c
     return isolated_heatmap, boundary_img_bgr, ai_attention_index, dominant_quadrant, quadrant_focus_pct
 
 # =====================================================================
-#  4. USER INTERFACE
+#  4. USER INTERFACE — entirely new layout, no sidebar, no card grid
 # =====================================================================
 
-# HERO LOCKUP
+# ---------------------------------------------------------------------
+# HERO — brand lockup only. No competing timestamp/metadata here.
+# ---------------------------------------------------------------------
 st.markdown(f"""
 <div class="rs-hero">
     <div class="rs-hero-mark">🩺</div>
@@ -568,7 +558,10 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-# TOOLBAR CONTROL DECK
+# ---------------------------------------------------------------------
+# TOOLBAR — replaces the sidebar entirely. Patient intake + upload
+# live in the main canvas as a horizontal control deck.
+# ---------------------------------------------------------------------
 st.markdown('<div class="rs-toolbar">', unsafe_allow_html=True)
 tb_col1, tb_col2, tb_col3 = st.columns([1.1, 1.6, 1], gap="large")
 with tb_col1:
@@ -601,7 +594,23 @@ if uploaded_file is None:
 file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
 img_bgr = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
 
-# SESSION STATE CACHE PERSISTENCE
+# ---------------------------------------------------------------------
+# FIX: prevent a new "visit" from being logged on every rerun.
+#
+# Streamlit reruns the ENTIRE script on any widget interaction — including
+# just clicking the "Grad-CAM Overlay" / "ROI Boundaries" radio buttons
+# further down the page. Previously, the full inference pipeline (and
+# save_patient_record, which appends to patient_history.json) executed
+# unconditionally on every rerun, so switching the image view silently
+# created a brand-new visit each time.
+#
+# Fix: compute a content hash of the uploaded image and use it, together
+# with the patient ID, as a cache key in st.session_state. The heavy
+# pipeline (inference, Grad-CAM, vascular map, PDF prep, and the visit-
+# history write) now only runs once per genuinely new (patient, image)
+# pair. Reruns triggered by the radio buttons simply reuse the cached
+# results instead of recomputing and re-logging.
+# ---------------------------------------------------------------------
 image_hash = hashlib.md5(file_bytes.tobytes() if hasattr(file_bytes, "tobytes") else bytes(file_bytes)).hexdigest()
 cache_key = (patient_id, image_hash)
 
@@ -609,17 +618,17 @@ if st.session_state.get("rs_cache_key") != cache_key:
     passed_screening, message, x_center, y_center, radius = run_pre_computing_screening(img_bgr)
 
     if not passed_screening:
+        # Don't cache a rejection as a "processed" result — just show it and stop.
         st.session_state.pop("rs_cache_key", None)
         st.session_state.pop("rs_cache_data", None)
         st.markdown(f"""
         <div class='rs-reject'>
             <b style="color:{DANGER};">✕ SCREENING REJECTED</b><br><br>{message}<br>
-            <span style='font-size:12px; opacity:0.75;'>Pipeline terminated automatically to prevent false classification predictions.</span>
+            <span style='font-size:12px; opacity:0.75;'>Pipeline terminated automatically to prevent false model classification predictions on corrupted data configurations.</span>
         </div>
         """, unsafe_allow_html=True)
         st.stop()
 
-    # Preprocess into normalized [0, 1] float tensor
     img_tensor = preprocess_for_inference(img_bgr)
 
     with st.spinner("Processing Multi-Variant Ensemble Imaging Analytics..."):
@@ -636,7 +645,7 @@ if st.session_state.get("rs_cache_key") != cache_key:
     with st.spinner("Mapping Vascular Topography..."):
         vessel_map = generate_vascular_map(img_bgr, x_center, y_center, radius)
 
-    # Save visit log exactly once per unique (patient, image) pair
+    # This is now the ONE place a new visit gets appended — guarded by the cache check above.
     record_logs = save_patient_record(patient_id, pred_name, confidence, attention_index)
 
     heatmap_color = cv2.applyColorMap(isolated_heatmap, cv2.COLORMAP_JET)
@@ -664,7 +673,7 @@ if st.session_state.get("rs_cache_key") != cache_key:
         "vessel_map": vessel_map,
     }
 
-# Read cached results
+# Pull the (possibly freshly-computed, possibly cached) result set for rendering.
 cached = st.session_state["rs_cache_data"]
 probabilities      = cached["probabilities"]
 consensus_status   = cached["consensus_status"]
@@ -682,12 +691,17 @@ boundary_rgb       = cached["boundary_rgb"]
 vessel_map         = cached["vessel_map"]
 accent_color       = SEVERITY_COLOR[pred_name]
 
+# Secondary clinical output: referable vs non-referable DR (standard screening
+# convention — Moderate NPDR and above requires specialist referral). Derived
+# directly from the same fused probabilities, no separate model needed.
 referable_prob = float(np.sum([probabilities[i] for i in REFERABLE_CLASSES])) * 100.0
 is_referable = pred_idx in REFERABLE_CLASSES
 referral_color = DANGER if is_referable else EMERALD
 referral_label = "REFERABLE" if is_referable else "NON-REFERABLE"
 
-# VERDICT HERO
+# ---------------------------------------------------------------------
+# VERDICT HERO — one dominant strip instead of a grid of boxed KPIs
+# ---------------------------------------------------------------------
 st.markdown(f"""
 <div class="rs-verdict-hero" style="background: linear-gradient(120deg, {accent_color}18, {SURFACE} 55%);">
     <div style="color:{TEXT_MUTED}; font-size:11px; text-transform:uppercase; letter-spacing:1px; font-weight:800;">Diagnostic Verdict</div>
@@ -708,7 +722,13 @@ st.markdown(f"""
 <p style="color:{TEXT_MAIN}; font-size:13.5px; line-height:1.65; margin: 18px 4px 0 4px;">{CLASS_DESCRIPTIONS[pred_idx]}</p>
 """, unsafe_allow_html=True)
 
-# VISUAL EVIDENCE & PROBABILITIES
+# ---------------------------------------------------------------------
+# VISUAL EVIDENCE — segmented switcher (pill radio) instead of a
+# side-by-side image grid; asymmetric split with the narrative rail.
+# Switching this radio button now only triggers a rerun that reads
+# from st.session_state["rs_cache_data"] above — it can no longer
+# re-run inference or write a new visit record.
+# ---------------------------------------------------------------------
 st.markdown('<div class="rs-divider-label">Visual Evidence</div>', unsafe_allow_html=True)
 
 evidence_col, rail_col = st.columns([1.35, 1], gap="large")
@@ -744,17 +764,21 @@ with evidence_col:
             unsafe_allow_html=True
         )
     st.markdown(
-        f"<p style='color:{TEXT_FAINT}; font-size:11.5px; margin-top:10px; line-height:1.5;'>± values reflect predictive uncertainty (std. dev.) across 3 TTA ensemble views.</p>",
+        f"<p style='color:{TEXT_FAINT}; font-size:11.5px; margin-top:10px; line-height:1.5;'>± values reflect predictive uncertainty (std. dev.) across the 3-view TTA ensemble.</p>",
         unsafe_allow_html=True
     )
 
 with rail_col:
+    # --- Explainable AI narrative (logic unchanged) ---
     visit_stamps = [r["timestamp"].split(" ")[0] for r in record_logs]
     attention_indices = [r["attention_index"] for r in record_logs]
     x_indices = np.arange(len(record_logs))
 
     MIN_VISITS_FOR_TREND = 3
-    r_squared, slope, next_x, next_y_pred = None, None, None, None
+    r_squared = None
+    slope = None
+    next_x = None
+    next_y_pred = None
     if len(record_logs) >= MIN_VISITS_FOR_TREND:
         slope, intercept = np.polyfit(x_indices, attention_indices, 1)
         fitted = slope * x_indices + intercept
@@ -775,12 +799,15 @@ with rail_col:
     if pred_idx == 0:
         xai_text = (
             "The Grad-CAM attention map shows no concentrated, high-intensity activation clusters within the fundus "
-            "field — activations are diffuse and low-magnitude across the retina. This is consistent with a 'No DR' classification."
+            "field — activations are diffuse and low-magnitude across the retina. This is consistent with a 'No DR' "
+            "classification rather than a positive finding the model is choosing to ignore."
         )
     else:
         xai_text = (
-            f"Grad-CAM traces which pixels most influenced the <strong>{pred_name}</strong> prediction. Attention is most concentrated "
-            f"in the <strong>{dominant_quad} quadrant</strong> ({quad_pct:.1f}% of total activation mass)."
+            f"Grad-CAM traces which pixels most influenced the <strong>{pred_name}</strong> prediction by back-propagating "
+            f"the class score to the final convolutional layer. Attention is most concentrated in the "
+            f"<strong>{dominant_quad} quadrant</strong> ({quad_pct:.1f}% of total activation mass), meaning the decision "
+            f"was driven predominantly by structures in that region."
         )
         if trajectory_alert == "ACCELERATING":
             xai_text += (
@@ -790,12 +817,17 @@ with rail_col:
         elif trajectory_alert == "NOISY_TREND":
             xai_text += (
                 f" <span style='color:{WARN}; font-weight:600;'>A rising trend is present (+{slope:.1f}%/visit) but "
-                f"the fit is weak (R²={r_squared:.2f}).</span>"
+                f"the fit is weak (R²={r_squared:.2f}) — more visits are needed before this is reliable.</span>"
             )
         elif trajectory_alert == "STABILIZED":
             xai_text += " Longitudinal tracking shows no statistically meaningful upward trend."
         else:
             xai_text += f" <span style='opacity:0.7;'>Trend analysis needs 3+ visits ({len(record_logs)} on record).</span>"
+
+    xai_text += (
+        " <span style='opacity:0.65; font-style:italic;'>This reflects model attention, not a confirmed clinical "
+        "diagnosis.</span>"
+    )
 
     st.markdown(f"""
     <div class="rs-rail-accent">
@@ -809,13 +841,15 @@ with rail_col:
     <div class="rs-rail">
         <div class="rs-rail-title" style="color:{TEXT_MUTED};">Referral Classification</div>
         <div class="rs-rail-body" style="color:{TEXT_MUTED}; font-size:12.5px;">
-            No DR / Mild NPDR → non-referable. Moderate NPDR and above → referable.
-            Patient referable probability is <b style="color:{referral_color};">{referable_prob:.1f}%</b>.
+            No DR / Mild NPDR → non-referable. Moderate NPDR and above → referable, specialist review advised.
+            This patient's aggregated referable-class probability is <b style="color:{referral_color};">{referable_prob:.1f}%</b>.
         </div>
     </div>
     """, unsafe_allow_html=True)
 
-# PATIENT HISTORY & TREND GRAPH
+# ---------------------------------------------------------------------
+# PATIENT HISTORY — horizontal visit chips + forecast chart
+# ---------------------------------------------------------------------
 st.markdown(f'<div class="rs-divider-label">Visit History · {patient_id}</div>', unsafe_allow_html=True)
 
 hist_col, chart_col = st.columns([1.2, 1], gap="large")
@@ -856,7 +890,9 @@ with chart_col:
     st.pyplot(fig)
     plt.close(fig)
 
-# EXPORT SUMMARY
+# ---------------------------------------------------------------------
+# EXPORT
+# ---------------------------------------------------------------------
 ist_timezone = pytz.timezone('Asia/Kolkata')
 current_date_ist = datetime.now(ist_timezone).strftime('%Y%m%d')
 
@@ -874,7 +910,9 @@ st.download_button(
     use_container_width=True
 )
 
-# AUDIT TRAIL & MODEL CARD
+# =====================================================================
+#  FOOTER — Model Card & Audit Trail (compact, collapsed by default)
+# =====================================================================
 st.markdown("<div style='margin-top:30px;'></div>", unsafe_allow_html=True)
 with st.expander("🗂️  Model Card & Audit Trail", expanded=False):
     mc_col1, mc_col2 = st.columns(2, gap="large")
@@ -902,6 +940,7 @@ with st.expander("🗂️  Model Card & Audit Trail", expanded=False):
 
 st.markdown(f"""
 <div style="text-align:center; padding: 22px 0 6px 0; color:{TEXT_FAINT}; font-size:11px; letter-spacing:0.3px;">
-    RetiScan Pro v5 &nbsp;·&nbsp; Decision-support tool for DR screening triage &nbsp;·&nbsp; Session: {datetime.now(pytz.timezone('Asia/Kolkata')).strftime('%d %b %Y, %H:%M IST')}
+    RetiScan Pro v5 &nbsp;·&nbsp; Decision-support tool for DR screening triage &nbsp;·&nbsp; Not a standalone diagnostic device
+    &nbsp;·&nbsp; Session: {datetime.now(pytz.timezone('Asia/Kolkata')).strftime('%d %b %Y, %H:%M IST')}
 </div>
 """, unsafe_allow_html=True)
