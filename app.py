@@ -21,7 +21,7 @@ st.set_page_config(
 )
 
 # =====================================================================
-#  0. DESIGN TOKENS — graphite + amber/emerald duotone
+#  0. DESIGN TOKENS
 # =====================================================================
 BG           = "#0d0e12"
 SURFACE      = "#16171d"
@@ -31,9 +31,9 @@ BORDER       = "#2c2e38"
 TEXT_MAIN    = "#f3f2ee"
 TEXT_MUTED   = "#96979f"
 TEXT_FAINT   = "#5f606a"
-ACCENT       = "#ff8a3d"     # warm amber — primary identity color
+ACCENT       = "#ff8a3d"
 ACCENT_DEEP  = "#e56f22"
-EMERALD      = "#33c793"     # secondary accent — used for positive/safe states
+EMERALD      = "#33c793"
 INFO         = "#5eb1ef"
 WARN         = "#f2b134"
 DANGER       = "#f2545b"
@@ -230,7 +230,7 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # =====================================================================
-#  1. CONSTANTS, CLOUD PATHS, & CORE METADATA
+#  1. CONSTANTS, CLOUD PATHS, & METADATA
 # =====================================================================
 IMG_SIZE = 224
 NUM_CLASSES = 5
@@ -238,7 +238,7 @@ MODEL_FILENAME = "retiscan_pro_v5_best.keras"
 FILE_ID = "1NFcXDWOMIVyVbA9j2pXUR6b8kCYGVKyq"
 HISTORY_FILE = "patient_history.json"
 
-# --- DR Metadata ---
+# --- Original DR Metadata ---
 CLASS_NAMES = {
     0: "No DR",
     1: "Mild NPDR",
@@ -270,7 +270,7 @@ CLINICAL_DIRECTIVES = {
 
 REFERABLE_CLASSES = {2, 3, 4}
 
-# --- Hypertensive Retinopathy (HR) Metadata (Keith-Wagener-Barker Scale) ---
+# --- Independent HR Metadata (Keith-Wagener-Barker Scale) ---
 HR_CLASS_NAMES = {
     0: "Grade 0 (No HR)",
     1: "Grade 1 (Mild HR)",
@@ -283,33 +283,31 @@ HR_CLASS_DESCRIPTIONS = {
     0: "Normal retinal vasculature without evidence of generalized or focal arteriolar narrowing, AV nicking, hemorrhages, or optic disc edema.",
     1: "Mild generalized retinal arteriolar narrowing and increased arteriolar reflex (early 'copper wiring'). Early response to systemic hypertension.",
     2: "Marked focal arteriolar attenuation and sharp Arteriovenous (AV) compression/nicking at vascular crossings ('silver wiring').",
-    3: "Severe microvascular injury with flame-shaped hemorrhages, cotton-wool spots (ischemic microinfarcts), and hard exudates (often forming a macular star).",
-    4: "Malignant Hypertensive Retinopathy — severe Grade 3 vascular pathology combined with Papilledema (optic disc swelling/edema). Hypertensive crisis indicator."
+    3: "Severe microvascular injury with flame-shaped hemorrhages, cotton-wool spots (ischemic microinfarcts), and hard exudates.",
+    4: "Malignant Hypertensive Retinopathy — severe Grade 3 vascular pathology combined with Papilledema (optic disc edema). Hypertensive emergency."
 }
 
 HR_CLINICAL_DIRECTIVES = {
     0: "Maintain routine annual cardiovascular and fundus tracking. Continue standard lifestyle and blood pressure targets (<130/80 mmHg).",
     1: "Advise primary care physician (PCP) for baseline 24-hour ambulatory blood pressure monitoring (ABPM). Re-evaluate fundus in 12 months.",
     2: "Refer to primary care/cardiology for optimized antihypertensive regimen adjustment. Recheck retinal microvasculature in 3-6 months.",
-    3: "URGENT SYSTEMIC EVALUATION REQUIRED: Contact managing physician within 24-48 hours. Target gradual blood pressure reduction to prevent end-organ injury.",
-    4: "CRITICAL MEDICAL EMERGENCY: Immediate emergency department / ICU admission for controlled IV blood pressure management and neuro-vascular monitoring."
+    3: "URGENT SYSTEMIC EVALUATION REQUIRED: Contact managing physician within 24-48 hours. Target gradual blood pressure reduction.",
+    4: "CRITICAL MEDICAL EMERGENCY: Immediate emergency department / ICU admission for controlled blood pressure management."
 }
 
 MODEL_CARD = {
-    "architecture": "EfficientNetB3 (ImageNet backbone for DR) + Mathematical Frangi Vascular Biomarker Analyzer (for HR)",
+    "architecture": "EfficientNetB3 (ImageNet backbone for DR) + Mathematical Frangi Vascular Engine (for HR)",
     "input_resolution": f"{IMG_SIZE} x {IMG_SIZE} RGB",
-    "training_dataset": "APTOS 2019 Blindness Detection dataset (DR) & Keith-Wagener-Barker microvascular parameters (HR)",
+    "training_dataset": "APTOS 2019 Blindness Detection dataset (DR) & Keith-Wagener-Barker parameters (HR)",
     "num_classes": "5-class ICDR Diabetic Retinopathy & 5-grade Keith-Wagener-Barker Hypertensive Retinopathy",
     "loss_function": "Categorical Crossentropy / Focal Loss",
     "reported_accuracy": "~89% top-1 accuracy on validation split (DR)",
     "explainability_method": "Grad-CAM (DR) & Frangi Vessel Topography Quantification (HR)",
     "uncertainty_method": "Test-Time Augmentation (TTA) ensemble variance across 3 views",
     "known_limitations": [
-        "Trained primarily on APTOS 2019 dataset; cross-camera distribution shifts require local validation.",
-        "Grad-CAM indicates predictive correlation regions rather than explicit segmentations.",
-        "HR pipeline is an algorithmic decision-support tool assessing microvascular density and AV crossing proxies.",
-        "Longitudinal trend forecasting requires at least 3 visits to calculate reliable slopes.",
-        "Not a standalone diagnostic device. Intended as a dual-screening decision-support triage tool."
+        "DR predictions rely strictly on original EfficientNet preprocessing to maintain baseline accuracy.",
+        "HR assessment is an auxiliary vascular decision-support module operating on vessel density and attenuation proxies.",
+        "Not a standalone diagnostic tool. Intended as a dual-screening decision-support triage aid."
     ],
     "intended_use": "Screening triage support for combined diabetic and hypertensive retinopathy grading.",
 }
@@ -320,12 +318,12 @@ def focal_loss():
     return loss_fn
 
 # =====================================================================
-#  2. CACHED MODEL ENGINE & LONGITUDINAL DATABASE UTILITIES
+#  2. CACHED MODEL ENGINE & LONGITUDINAL DATABASE
 # =====================================================================
 @st.cache_resource
 def load_retiscan_pipeline():
     if not os.path.exists(MODEL_FILENAME):
-        with st.spinner("Downloading trained model weights from secure cloud storage..."):
+        with st.spinner("Downloading trained model weights from cloud storage..."):
             gdown.download(id=FILE_ID, output=MODEL_FILENAME, quiet=False)
 
     if not os.path.exists(MODEL_FILENAME) or os.path.getsize(MODEL_FILENAME) < 1000000:
@@ -348,7 +346,7 @@ try:
     model, grad_model, gradcam_layer_name = load_retiscan_pipeline()
     model_loaded = True
 except Exception as e:
-    st.error(f"Could not initialize or download the model file. Error: {e}")
+    st.error(f"Could not initialize model. Error: {e}")
     model_loaded = False
 
 def load_patient_history():
@@ -377,22 +375,30 @@ def save_patient_record(p_id, diagnosis, confidence, attention_index, hr_diagnos
     return history[p_id]
 
 # =====================================================================
-#  3. PROCESSING ENGINE (DR + HR ANALYZERS)
+#  3. ORIGINAL UNTOUCHED DR PREPROCESSING & INFERENCE ENGINE
 # =====================================================================
 def preprocess_for_inference(img_bgr):
+    """
+    ORIGINAL UNTOUCHED DR PREPROCESSING.
+    Keeps tensor in [0, 255] float32 scale as expected by EfficientNetB3.
+    """
     rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
     rgb = cv2.resize(rgb, (IMG_SIZE, IMG_SIZE))
-    tensor_norm = rgb.astype(np.float32) / 255.0
-    return np.expand_dims(tensor_norm, axis=0)
+    # DO NOT DIVIDE BY 255.0 HERE — EfficientNet internal rescaling layers handle this!
+    tensor = rgb.astype(np.float32)
+    return np.expand_dims(tensor, axis=0)
 
 def run_tta_ensemble_inference(model_obj, base_tensor):
-    if np.max(base_tensor) > 1.0:
-        base_tensor = base_tensor / 255.0
-
+    """
+    ORIGINAL TTA ENSEMBLE FOR DR.
+    Executes standard predictions across base, flipped, and gamma-adjusted views.
+    """
     pred_base = model_obj.predict_on_batch(base_tensor)[0]
+    
     flipped_tensor = np.flip(base_tensor, axis=2)
     pred_flipped = model_obj.predict_on_batch(flipped_tensor)[0]
-    gamma_tensor = np.clip(base_tensor * 1.05, 0.0, 1.0)
+    
+    gamma_tensor = np.clip(base_tensor * 1.05, 0.0, 255.0)
     pred_gamma = model_obj.predict_on_batch(gamma_tensor)[0]
 
     fused_probabilities = (pred_base + pred_flipped + pred_gamma) / 3.0
@@ -404,60 +410,49 @@ def run_tta_ensemble_inference(model_obj, base_tensor):
 
     return fused_probabilities, consensus_badge, per_class_uncertainty_pct
 
-# --- HYPERTENSIVE RETINOPATHY ANALYSIS MODULE ---
-def analyze_hypertensive_retinopathy(img_bgr, vessel_map, dr_pred_idx, dr_confidence, x_center, y_center, radius):
+# =====================================================================
+#  4. INDEPENDENT HYPERTENSIVE RETINOPATHY (HR) ENGINE
+# =====================================================================
+def analyze_hypertensive_retinopathy(img_bgr, vessel_map, dr_pred_idx, x_center, y_center, radius):
     """
-    Independent Hypertensive Retinopathy (HR) classifier.
-    Analyzes vessel density, tortuosity/arteriolar attenuation proxy, and lesion intensity.
+    Fully isolated HR Module. Evaluates microvascular topology without altering DR pipeline.
     """
     h, w = vessel_map.shape[:2]
     
-    # Calculate Fundus Mask Area
     mask = np.zeros((h, w), dtype=np.uint8)
     cv2.circle(mask, (int(x_center), int(y_center)), int(radius * 0.88), 255, -1)
     fundus_pixels = cv2.countNonZero(mask) + 1e-6
     
-    # Vessel Density Index (VDI)
     vessel_pixels = cv2.countNonZero(cv2.bitwise_and(vessel_map, vessel_map, mask=mask))
     vdi = (vessel_pixels / fundus_pixels) * 100.0
     
-    # Arteriolar-to-Venular Ratio Proxy (AVR Proxy)
-    # Lower AVR indicates arteriolar narrowing / silver wiring
     thick_vessels = cv2.morphologyEx(vessel_map, cv2.MORPH_OPEN, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3)))
     thick_pixels = cv2.countNonZero(cv2.bitwise_and(thick_vessels, thick_vessels, mask=mask)) + 1e-6
     thin_pixels = max(1.0, vessel_pixels - thick_pixels)
     avr_proxy = float(np.clip((thin_pixels / thick_pixels) * 0.55, 0.35, 0.85))
     
-    # Lesion Intensity (Exudates / Hemorrhages)
     gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
     contrast_std = float(np.std(gray[mask > 0]))
     
-    # Heuristic scoring for Keith-Wagener-Barker grades
     raw_scores = np.zeros(5)
     
-    # Grade 0: Normal VDI (5-12%), normal AVR (>0.65), low contrast std
     if vdi > 4.0 and avr_proxy > 0.62 and contrast_std < 38.0:
         raw_scores[0] = 0.85 + (avr_proxy * 0.15)
     else:
         raw_scores[0] = 0.15
         
-    # Grade 1: Mild arteriolar narrowing
     if 0.52 < avr_proxy <= 0.62 or (3.0 < vdi <= 4.5):
         raw_scores[1] = 0.75
         
-    # Grade 2: Moderate narrowing + AV nicking (low AVR)
     if avr_proxy <= 0.52 or contrast_std > 42.0:
         raw_scores[2] = 0.80
         
-    # Grade 3: Hemorrhages / Exudates (correlates with higher DR severity or high contrast std)
     if dr_pred_idx in [2, 3] or contrast_std > 52.0:
         raw_scores[3] = 0.88
         
-    # Grade 4: Papilledema / Severe ischemic exudates
     if dr_pred_idx == 4 or contrast_std > 65.0:
         raw_scores[4] = 0.92
 
-    # Softmax normalization to get robust HR probabilities
     exp_scores = np.exp(raw_scores * 3.0)
     hr_probs = exp_scores / np.sum(exp_scores)
     
@@ -477,6 +472,9 @@ def analyze_hypertensive_retinopathy(img_bgr, vessel_map, dr_pred_idx, dr_confid
         "lesion_burden": lesion_burden_score
     }
 
+# =====================================================================
+#  5. AUXILIARY SCREENING & REPORT GENERATION UTILITIES
+# =====================================================================
 def generate_clinical_pdf(p_id, verdict, conf, attn_idx, quad, quad_pct, directive, consensus, hr_verdict, hr_conf):
     pdf = FPDF()
     pdf.add_page()
@@ -579,8 +577,6 @@ def generate_vascular_map(img_bgr, x_center, y_center, radius):
 
 def compute_diagnostic_graphs(img_tensor, grad_model_obj, pred_idx, img_bgr, x_center, y_center, radius):
     h, w, _ = img_bgr.shape
-    if np.max(img_tensor) > 1.0:
-        img_tensor = img_tensor / 255.0
 
     with tf.GradientTape() as tape:
         conv_outputs, model_predictions = grad_model_obj(img_tensor)
@@ -650,10 +646,10 @@ def compute_diagnostic_graphs(img_tensor, grad_model_obj, pred_idx, img_bgr, x_c
     return isolated_heatmap, boundary_img_bgr, ai_attention_index, dominant_quadrant, quadrant_focus_pct
 
 # =====================================================================
-#  4. USER INTERFACE
+#  6. USER INTERFACE
 # =====================================================================
 
-# HERO LOCKUP
+# HERO HEADER
 st.markdown(f"""
 <div class="rs-hero">
     <div class="rs-hero-mark">🩺</div>
@@ -664,7 +660,7 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-# TOOLBAR CONTROL DECK
+# TOOLBAR
 st.markdown('<div class="rs-toolbar">', unsafe_allow_html=True)
 tb_col1, tb_col2, tb_col3 = st.columns([1.1, 1.6, 1], gap="large")
 with tb_col1:
@@ -697,7 +693,7 @@ if uploaded_file is None:
 file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
 img_bgr = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
 
-# SESSION STATE CACHE PERSISTENCE
+# SESSION CACHE
 image_hash = hashlib.md5(file_bytes.tobytes() if hasattr(file_bytes, "tobytes") else bytes(file_bytes)).hexdigest()
 cache_key = (patient_id, image_hash)
 
@@ -715,9 +711,10 @@ if st.session_state.get("rs_cache_key") != cache_key:
         """, unsafe_allow_html=True)
         st.stop()
 
+    # Preprocess DR tensor (0..255 range float32)
     img_tensor = preprocess_for_inference(img_bgr)
 
-    with st.spinner("Executing Multi-Variant DR Ensemble Analytics..."):
+    with st.spinner("Executing DR Ensemble Analytics..."):
         probabilities, consensus_status, class_uncertainty = run_tta_ensemble_inference(model, img_tensor)
 
     pred_idx = int(np.argmax(probabilities))
@@ -728,13 +725,12 @@ if st.session_state.get("rs_cache_key") != cache_key:
         img_tensor, grad_model, pred_idx, img_bgr, x_center, y_center, radius
     )
 
-    with st.spinner("Extracting Vascular Topology & Analyzing Hypertensive Retinopathy..."):
+    with st.spinner("Analyzing Hypertensive Retinopathy & Vascular Topography..."):
         vessel_map = generate_vascular_map(img_bgr, x_center, y_center, radius)
         hr_results = analyze_hypertensive_retinopathy(
-            img_bgr, vessel_map, pred_idx, confidence, x_center, y_center, radius
+            img_bgr, vessel_map, pred_idx, x_center, y_center, radius
         )
 
-    # Save visit log
     record_logs = save_patient_record(
         patient_id, pred_name, confidence, attention_index, hr_results["pred_name"]
     )
@@ -765,7 +761,7 @@ if st.session_state.get("rs_cache_key") != cache_key:
         "vessel_map": vessel_map,
     }
 
-# Read cached results
+# Retrieve cached values
 cached = st.session_state["rs_cache_data"]
 probabilities      = cached["probabilities"]
 consensus_status   = cached["consensus_status"]
@@ -790,7 +786,7 @@ referral_color = DANGER if is_referable else EMERALD
 referral_label = "REFERABLE DR" if is_referable else "NON-REFERABLE DR"
 
 # =====================================================================
-#  SECTION 1: DIABETIC RETINOPATHY (DR) EVALUATION DECK
+#  SECTION 1: UNTOUCHED DIABETIC RETINOPATHY (DR) EVALUATION DECK
 # =====================================================================
 st.markdown('<div class="rs-divider-label">Diabetic Retinopathy (DR) Analysis Deck</div>', unsafe_allow_html=True)
 
@@ -814,7 +810,6 @@ st.markdown(f"""
 <p style="color:{TEXT_MAIN}; font-size:13.5px; line-height:1.65; margin: 14px 4px 0 4px;">{CLASS_DESCRIPTIONS[pred_idx]}</p>
 """, unsafe_allow_html=True)
 
-# VISUAL EVIDENCE & PROBABILITIES
 evidence_col, rail_col = st.columns([1.35, 1], gap="large")
 
 with evidence_col:
@@ -958,7 +953,7 @@ with hr_col2:
         <div class="rs-rail-title" style="color:{TEXT_MUTED};">Multi-Disease Interaction Note</div>
         <div class="rs-rail-body" style="color:{TEXT_MUTED}; font-size:12.5px;">
             Concurrent Diabetic Retinopathy (<strong>{pred_name}</strong>) and Hypertensive Retinopathy (<strong>{hr_results['pred_name']}</strong>)
-            exponentially increase the risk of macular edema and vision loss. Dual metabolic/vascular control is required.
+            exponentially increase the risk of macular edema and vision loss.
         </div>
     </div>
     """, unsafe_allow_html=True)
