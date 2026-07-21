@@ -12,7 +12,7 @@ from datetime import datetime
 from fpdf import FPDF
 from skimage.filters import frangi  # Mathematical vascular extraction
 
-# Set page configurations — wide canvas, no sidebar (structure is fully custom)
+# Set page configurations — wide canvas, no sidebar
 st.set_page_config(
     page_title="RetiScan Pro v5",
     page_icon="🩺",
@@ -21,7 +21,7 @@ st.set_page_config(
 )
 
 # =====================================================================
-#  0. DESIGN TOKENS — graphite + amber/emerald duotone (distinct identity)
+#  0. DESIGN TOKENS — graphite + amber/emerald duotone
 # =====================================================================
 BG           = "#0d0e12"
 SURFACE      = "#16171d"
@@ -112,7 +112,7 @@ st.markdown(f"""
     }}
     .stDownloadButton button p {{ color: #201200 !important; font-weight: 800 !important; }}
 
-    /* ============ Radio-as-segmented-control (image switcher) ============ */
+    /* ============ Radio Segmented Control ============ */
     div[role="radiogroup"] {{
         display: flex; gap: 6px; background: {SURFACE_ALT};
         padding: 5px; border-radius: 12px; border: 1px solid {BORDER};
@@ -136,12 +136,12 @@ st.markdown(f"""
     }}
     .stExpander summary {{ color: {TEXT_MAIN} !important; font-weight: 700 !important; }}
 
-    /* ============ Misc widgets ============ */
+    /* ============ Misc ============ */
     hr {{ border-color: {BORDER} !important; }}
     ::-webkit-scrollbar {{ width: 8px; height: 8px; }}
     ::-webkit-scrollbar-thumb {{ background-color: {BORDER}; border-radius: 8px; }}
 
-    /* ============ Custom layout primitives ============ */
+    /* ============ Custom Layout Elements ============ */
     .rs-hero {{
         display: flex; align-items: center; gap: 16px;
         padding: 26px 0 22px 0;
@@ -226,15 +226,8 @@ st.markdown(f"""
 # =====================================================================
 IMG_SIZE = 224
 NUM_CLASSES = 5
-
-# --- DR Model Settings ---
 MODEL_FILENAME = "retiscan_pro_v5_best.keras"
 FILE_ID = "1NFcXDWOMIVyVbA9j2pXUR6b8kCYGVKyq"
-
-# --- Integrated HR Model Settings ---
-HR_MODEL_FILENAME = "retiscan_hr_best.keras"
-HR_FILE_ID = ""  # Add your Google Drive File ID here if hosting remotely
-
 HISTORY_FILE = "patient_history.json"
 
 CLASS_NAMES = {
@@ -247,20 +240,15 @@ CLASS_NAMES = {
 
 CLASS_DESCRIPTIONS = {
     0: "No visible signs of diabetic retinopathy. The retinal vasculature, macula, and optic disc region show no microaneurysms, "
-       "hemorrhages, hard exudates, or neovascularization within the analyzed field. This represents the healthiest end of the "
-       "ICDR (International Clinical Diabetic Retinopathy) severity scale.",
-    1: "Mild Non-Proliferative DR — the earliest detectable stage. Characterized by isolated microaneurysms: small, localized "
-       "balloon-like outpouchings in retinal capillary walls caused by chronic hyperglycemic damage to vessel structure. "
-       "No hemorrhages or exudates are typically present yet, and vision is usually unaffected at this stage.",
-    2: "Moderate Non-Proliferative DR — a progressive stage marked by an increasing number of microaneurysms, scattered "
-       "intraretinal hemorrhages ('dot-and-blot' pattern), and early microvascular abnormalities. This is the threshold at "
-       "which most screening guidelines recommend specialist referral, as the risk of progression to sight-threatening disease rises.",
-    3: "Severe Non-Proliferative DR — extensive hemorrhages and microaneurysms across multiple retinal quadrants, along with "
-       "venous beading and intraretinal microvascular abnormalities (IRMA). This stage carries a substantially elevated short-term "
-       "risk of progressing to proliferative disease and requires prompt ophthalmological evaluation.",
-    4: "Proliferative DR — the most advanced stage, defined by neovascularization: fragile, abnormal new blood vessels growing "
-       "in response to retinal ischemia. These vessels are prone to leakage and rupture, creating a high risk of vitreous "
-       "hemorrhage and tractional retinal detachment if left untreated. This stage constitutes a medical emergency."
+       "hemorrhages, hard exudates, or neovascularization within the analyzed field.",
+    1: "Mild Non-Proliferative DR — characterized by isolated microaneurysms: small, localized outpouchings in retinal capillary walls "
+       "caused by chronic hyperglycemic damage. No exudates or gross hemorrhages are typically present yet.",
+    2: "Moderate Non-Proliferative DR — progressive stage with multiple microaneurysms, intraretinal hemorrhages ('dot-and-blot' pattern), "
+       "and early vascular abnormalities. Threshold for mandatory specialist referral.",
+    3: "Severe Non-Proliferative DR — extensive hemorrhages across multiple quadrants, venous beading, or intraretinal microvascular "
+       "abnormalities (IRMA). Elevated short-term risk of progressing to proliferative disease.",
+    4: "Proliferative DR — advanced stage defined by neovascularization (fragile new blood vessel proliferation). Prone to leakage and rupture, "
+       "creating immediate risk of vitreous hemorrhage or tractional retinal detachment."
 }
 
 CLINICAL_DIRECTIVES = {
@@ -275,21 +263,21 @@ REFERABLE_CLASSES = {2, 3, 4}
 NON_REFERABLE_CLASSES = {0, 1}
 
 MODEL_CARD = {
-    "architecture": "Dual Pipeline: DR EfficientNetB3 + HR Vascular Classifier",
+    "architecture": "EfficientNetB3 (ImageNet-pretrained backbone, fine-tuned)",
     "input_resolution": f"{IMG_SIZE} x {IMG_SIZE} RGB",
-    "training_dataset": "APTOS 2019 & Vascular Retinal Screening Corpora",
-    "num_classes": "5-class DR ICDR scale + Binary HR Screening Triage",
-    "loss_function": "Categorical Crossentropy & Binary Crossentropy",
-    "reported_accuracy": "~89% DR top-1 accuracy / ~91% HR binary sensitivity",
-    "explainability_method": "Grad-CAM (gradient-weighted class activation mapping) + Frangi Vascular Topography",
+    "training_dataset": "APTOS 2019 Blindness Detection dataset",
+    "num_classes": "5-class ICDR severity scale (No DR → Proliferative DR)",
+    "loss_function": "Categorical Crossentropy / Focal Loss",
+    "reported_accuracy": "~89% top-1 accuracy on validation split",
+    "explainability_method": "Grad-CAM (gradient-weighted class activation mapping)",
     "uncertainty_method": "Test-Time Augmentation (TTA) ensemble variance across 3 views",
     "known_limitations": [
-        "Trained and validated on standard fundus databases; performance across uncalibrated hardware requires validation.",
-        "Grad-CAM highlights regions correlated with the prediction — it does not guarantee the highlighted region is the true clinical lesion.",
-        "Longitudinal trend forecasting requires at least 3 visits to be statistically meaningful; earlier visits are descriptive only.",
-        "Not a standalone diagnostic device. Intended as a decision-support and triage aid alongside qualified clinical judgement.",
+        "Trained primarily on APTOS 2019 dataset; cross-camera distribution shifts require local validation.",
+        "Grad-CAM indicates predictive correlation regions rather than explicit segmentations.",
+        "Longitudinal trend forecasting requires at least 3 visits to calculate reliable slopes.",
+        "Not a standalone diagnostic system. Intended as a decision-support triage tool."
     ],
-    "intended_use": "Dual screening triage support for DR grading & Hypertensive Retinopathy vascular assessment.",
+    "intended_use": "Screening triage support for diabetic retinopathy grading to prioritize specialist review.",
 }
 
 def focal_loss():
@@ -298,17 +286,16 @@ def focal_loss():
     return loss_fn
 
 # =====================================================================
-#  2. CACHED DUAL MODEL ENGINE & LONGITUDINAL DATABASE UTILITIES
+#  2. CACHED MODEL ENGINE & LONGITUDINAL DATABASE UTILITIES
 # =====================================================================
 @st.cache_resource
 def load_retiscan_pipeline():
-    # --- Load Primary DR Model ---
     if not os.path.exists(MODEL_FILENAME):
-        with st.spinner("Downloading trained DR model weights from cloud..."):
+        with st.spinner("Downloading trained model weights from secure cloud storage..."):
             gdown.download(id=FILE_ID, output=MODEL_FILENAME, quiet=False)
 
     if not os.path.exists(MODEL_FILENAME) or os.path.getsize(MODEL_FILENAME) < 1000000:
-        raise FileNotFoundError("The DR model file downloaded is corrupted or empty.")
+        raise FileNotFoundError("The model file downloaded is corrupted or empty.")
 
     main_model = tf.keras.models.load_model(MODEL_FILENAME, custom_objects={"focal_loss": focal_loss()})
 
@@ -321,29 +308,13 @@ def load_retiscan_pipeline():
         conv_layer_name = "top_conv"
 
     grad_model = tf.keras.models.Model([main_model.inputs], [main_model.get_layer(conv_layer_name).output, main_model.output])
-    
-    # --- Load Integrated HR Model (or Fallback Synthetic Evaluator) ---
-    hr_model = None
-    if os.path.exists(HR_MODEL_FILENAME):
-        try:
-            hr_model = tf.keras.models.load_model(HR_MODEL_FILENAME, custom_objects={"focal_loss": focal_loss()})
-        except Exception:
-            hr_model = None
-    elif HR_FILE_ID:
-        try:
-            with st.spinner("Downloading HR classifier weights..."):
-                gdown.download(id=HR_FILE_ID, output=HR_MODEL_FILENAME, quiet=False)
-            hr_model = tf.keras.models.load_model(HR_MODEL_FILENAME, custom_objects={"focal_loss": focal_loss()})
-        except Exception:
-            hr_model = None
-
-    return main_model, grad_model, conv_layer_name, hr_model
+    return main_model, grad_model, conv_layer_name
 
 try:
-    model, grad_model, gradcam_layer_name, hr_model = load_retiscan_pipeline()
+    model, grad_model, gradcam_layer_name = load_retiscan_pipeline()
     model_loaded = True
 except Exception as e:
-    st.error(f"Could not initialize model pipeline. Error: {e}")
+    st.error(f"Could not initialize or download the model file. Error: {e}")
     model_loaded = False
 
 def load_patient_history():
@@ -353,7 +324,7 @@ def load_patient_history():
         except: return {}
     return {}
 
-def save_patient_record(p_id, dr_diagnosis, dr_confidence, attention_index, hr_status, hr_confidence):
+def save_patient_record(p_id, diagnosis, confidence, attention_index):
     history = load_patient_history()
     if p_id not in history: history[p_id] = []
 
@@ -362,65 +333,63 @@ def save_patient_record(p_id, dr_diagnosis, dr_confidence, attention_index, hr_s
 
     new_entry = {
         "timestamp": current_time_ist,
-        "diagnosis": dr_diagnosis,
-        "confidence": round(float(dr_confidence), 2),
-        "attention_index": round(float(attention_index), 2),
-        "hr_status": hr_status,
-        "hr_confidence": round(float(hr_confidence), 2)
+        "diagnosis": diagnosis,
+        "confidence": round(float(confidence), 2),
+        "attention_index": round(float(attention_index), 2)
     }
     history[p_id].append(new_entry)
     with open(HISTORY_FILE, "w") as f: json.dump(history, f, indent=4)
     return history[p_id]
 
 # =====================================================================
-#  3. PROCESSING ENGINE & METRICS (IQA, VASCULAR, TTA, HR INFERENCE, PDF)
+#  3. PROCESSING ENGINE & METRICS (NORMALIZATION FIX APPLIED)
 # =====================================================================
 def preprocess_for_inference(img_bgr):
+    """
+    CRITICAL FIX: Resizes and converts image array into [0, 1] normalized float tensor.
+    Unscaled [0, 255] float arrays cause saturated neuron predictions (forcing 'No DR').
+    """
     rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
     rgb = cv2.resize(rgb, (IMG_SIZE, IMG_SIZE))
-    tensor = rgb.astype(np.float32)
-    return np.expand_dims(tensor, axis=0)
+    
+    # Scale pixels strictly to [0.0, 1.0]
+    tensor_norm = rgb.astype(np.float32) / 255.0
+    return np.expand_dims(tensor_norm, axis=0)
 
-def run_tta_ensemble_inference(model, base_tensor):
-    pred_base = model.predict_on_batch(base_tensor)[0]
+def run_tta_ensemble_inference(model_obj, base_tensor):
+    """
+    Runs Test-Time Augmentation on normalized input tensors.
+    """
+    # Ensure input tensor is normalized in [0, 1] range
+    if np.max(base_tensor) > 1.0:
+        base_tensor = base_tensor / 255.0
+
+    pred_base = model_obj.predict_on_batch(base_tensor)[0]
+    
+    # Horizontal Flip View
     flipped_tensor = np.flip(base_tensor, axis=2)
-    pred_flipped = model.predict_on_batch(flipped_tensor)[0]
-    gamma_tensor = np.clip(base_tensor * 1.05, 0.0, 255.0)
-    pred_gamma = model.predict_on_batch(gamma_tensor)[0]
+    pred_flipped = model_obj.predict_on_batch(flipped_tensor)[0]
+    
+    # Gamma Shift View (clipped to [0.0, 1.0])
+    gamma_tensor = np.clip(base_tensor * 1.05, 0.0, 1.0)
+    pred_gamma = model_obj.predict_on_batch(gamma_tensor)[0]
 
     fused_probabilities = (pred_base + pred_flipped + pred_gamma) / 3.0
+
     per_class_variance = np.var([pred_base, pred_flipped, pred_gamma], axis=0)
     mean_variance = np.mean(per_class_variance)
     consensus_badge = "HIGH CONSENSUS" if mean_variance < 0.02 else "BORDERLINE VERIFICATION REQUIRED"
+
     per_class_uncertainty_pct = np.sqrt(per_class_variance) * 100.0
 
     return fused_probabilities, consensus_badge, per_class_uncertainty_pct
 
-def run_hr_inference(hr_model_obj, base_tensor, vessel_map_img):
-    """
-    Dedicated Hypertensive Retinopathy (HR) inference execution.
-    Uses trained HR model if present; otherwise leverages arteriolar tortuosity/density 
-    heuristics extracted from the Frangi vascular map.
-    """
-    if hr_model_obj is not None:
-        raw_pred = hr_model_obj.predict_on_batch(base_tensor)[0]
-        prob = float(raw_pred[0]) if len(raw_pred) == 1 else float(raw_pred[1])
-    else:
-        # High-precision anatomical fallback based on vessel density in green spectrum
-        vessel_ratio = float(np.mean(vessel_map_img > 30))
-        prob = min(max((vessel_ratio * 4.2) - 0.15, 0.04), 0.96)
-
-    detected = prob >= 0.50
-    status_label = "POSITIVE (Risk Detected)" if detected else "NEGATIVE (Normal)"
-    confidence = prob * 100.0 if detected else (1.0 - prob) * 100.0
-    return status_label, confidence, prob, detected
-
-def generate_clinical_pdf(p_id, verdict, conf, attn_idx, quad, quad_pct, directive, consensus, hr_label, hr_conf):
+def generate_clinical_pdf(p_id, verdict, conf, attn_idx, quad, quad_pct, directive, consensus):
     pdf = FPDF()
     pdf.add_page()
     pdf.set_font("Helvetica", "B", 18)
     pdf.set_text_color(16, 185, 129)
-    pdf.cell(0, 10, "RETISCAN PRO DUAL DIAGNOSTIC REPORT", ln=True, align="C")
+    pdf.cell(0, 10, "RETISCAN PRO DIAGNOSTIC SUMMARY REPORT", ln=True, align="C")
     pdf.ln(10)
 
     ist_timezone = pytz.timezone('Asia/Kolkata')
@@ -435,37 +404,34 @@ def generate_clinical_pdf(p_id, verdict, conf, attn_idx, quad, quad_pct, directi
     pdf.ln(8)
 
     pdf.set_font("Helvetica", "B", 14)
-    pdf.cell(0, 10, f"Diabetic Retinopathy Verdict: {verdict}", ln=True)
+    pdf.cell(0, 10, f"Diagnostic Conclusion: {verdict}", ln=True)
     pdf.set_font("Helvetica", "", 12)
-    pdf.cell(0, 8, f"DR Classification Confidence: {conf:.2f}%", ln=True)
-    pdf.cell(0, 8, f"AI Neuro-Attention Index: {attn_idx:.1f}%", ln=True)
+    pdf.cell(0, 8, f"Statistical Classification Confidence: {conf:.2f}%", ln=True)
+    pdf.cell(0, 8, f"AI Neuro-Attention Mapping Index: {attn_idx:.1f}%", ln=True)
     pdf.cell(0, 8, f"Dominant Pathology Cluster: {quad} Quadrant ({quad_pct:.1f}% Focus)", ln=True)
-    pdf.ln(4)
-
-    pdf.set_font("Helvetica", "B", 14)
-    pdf.cell(0, 10, f"Hypertensive Retinopathy Assessment: {hr_label}", ln=True)
-    pdf.set_font("Helvetica", "", 12)
-    pdf.cell(0, 8, f"HR Triage Confidence: {hr_conf:.2f}%", ln=True)
-    pdf.ln(6)
+    pdf.ln(5)
 
     pdf.set_font("Helvetica", "B", 12)
-    pdf.cell(0, 8, "Management Protocol Directive:", ln=True)
+    pdf.cell(0, 8, "Official Management Protocol Directive:", ln=True)
     pdf.set_font("Helvetica", "I", 11)
     pdf.multi_cell(0, 6, directive)
 
     return bytes(pdf.output())
 
 def run_pre_computing_screening(img_bgr):
+    """
+    Quality gate checks with calibrated thresholds for high-contrast retinal pathology.
+    """
     h, w, _ = img_bgr.shape
     gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
 
     blur_score = cv2.Laplacian(gray, cv2.CV_64F).var()
-    if blur_score < 45.0:
-        return False, f"REJECTED: Asset fails focal clarity standards (Blur Variance: {blur_score:.1f}). Please recapture.", None, None, None
+    if blur_score < 25.0:  # Calibrated blur variance threshold
+        return False, f"REJECTED: Image fails focal clarity standards (Blur Variance: {blur_score:.1f}). Please recapture.", None, None, None
 
     mean_brightness = np.mean(gray)
-    if mean_brightness < 10:
-        return False, "REJECTED: Low asset luminance exposure (Image too dark).", None, None, None
+    if mean_brightness < 8:
+        return False, "REJECTED: Low image luminance exposure (Image too dark).", None, None, None
 
     _, thresh = cv2.threshold(gray, 15, 255, cv2.THRESH_BINARY)
     contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -477,8 +443,8 @@ def run_pre_computing_screening(img_bgr):
     contour_area = cv2.contourArea(largest_contour)
     total_area = h * w
 
-    if contour_area < (total_area * 0.15):
-        return False, "REJECTED: Geometry unverified. Extracted fundus structure area is too small.", None, None, None
+    if contour_area < (total_area * 0.12):
+        return False, "REJECTED: Fundus structure area is too small relative to frame.", None, None, None
 
     (x_center, y_center), radius = cv2.minEnclosingCircle(largest_contour)
 
@@ -487,8 +453,8 @@ def run_pre_computing_screening(img_bgr):
 
     mean_b, mean_g, mean_r, _ = cv2.mean(img_bgr, mask=circle_mask)
 
-    if mean_b > 90 or mean_r < mean_g:
-        return False, "REJECTED: Biological profile mismatch. Asset lacks standard retinal pigmentation signatures.", None, None, None
+    if mean_b > 115:
+        return False, f"REJECTED: Biological profile mismatch (Anomalous blue channel reflection detected).", None, None, None
 
     return True, "PASSED", x_center, y_center, radius
 
@@ -510,11 +476,18 @@ def generate_vascular_map(img_bgr, x_center, y_center, radius):
     clean_vessel_map = cv2.bitwise_and(vesselness_norm, perfect_circle_mask)
     return clean_vessel_map
 
-def compute_diagnostic_graphs(img_tensor, grad_model, pred_idx, img_bgr, x_center, y_center, radius):
+def compute_diagnostic_graphs(img_tensor, grad_model_obj, pred_idx, img_bgr, x_center, y_center, radius):
+    """
+    Computes Grad-CAM activation maps using normalized inputs [0, 1].
+    """
     h, w, _ = img_bgr.shape
 
+    # Ensure input tensor is normalized in [0, 1]
+    if np.max(img_tensor) > 1.0:
+        img_tensor = img_tensor / 255.0
+
     with tf.GradientTape() as tape:
-        conv_outputs, model_predictions = grad_model(img_tensor)
+        conv_outputs, model_predictions = grad_model_obj(img_tensor)
         loss = model_predictions[:, pred_idx]
 
     grads = tape.gradient(loss, conv_outputs)
@@ -581,21 +554,21 @@ def compute_diagnostic_graphs(img_tensor, grad_model, pred_idx, img_bgr, x_cente
     return isolated_heatmap, boundary_img_bgr, ai_attention_index, dominant_quadrant, quadrant_focus_pct
 
 # =====================================================================
-#  4. USER INTERFACE — layout with integrated HR & DR dual pipeline
+#  4. USER INTERFACE
 # =====================================================================
 
-# HERO Header
+# HERO LOCKUP
 st.markdown(f"""
 <div class="rs-hero">
     <div class="rs-hero-mark">🩺</div>
     <div>
         <div class="rs-hero-title">RetiScan Pro <span style="color:{ACCENT};">v5</span></div>
-        <div class="rs-hero-sub">Dual AI retinal screening engine: Diabetic Retinopathy & Hypertensive Retinopathy Assessment</div>
+        <div class="rs-hero-sub">AI-assisted diabetic retinopathy grading with explainable, auditable reasoning</div>
     </div>
 </div>
 """, unsafe_allow_html=True)
 
-# TOOLBAR
+# TOOLBAR CONTROL DECK
 st.markdown('<div class="rs-toolbar">', unsafe_allow_html=True)
 tb_col1, tb_col2, tb_col3 = st.columns([1.1, 1.6, 1], gap="large")
 with tb_col1:
@@ -607,8 +580,8 @@ with tb_col2:
 with tb_col3:
     st.markdown('<div class="rs-toolbar-label">Active Pipeline</div>', unsafe_allow_html=True)
     st.markdown(f"""
-    <div style="font-size:13px; font-weight:700; color:{TEXT_MAIN}; margin-top:6px;">Dual Classifier · DR + HR</div>
-    <div style="font-size:11.5px; color:{TEXT_MUTED}; margin-top:2px;">Grad-CAM · Frangi Vascular Topography</div>
+    <div style="font-size:13px; font-weight:700; color:{TEXT_MAIN}; margin-top:6px;">EfficientNetB3 · 5-class ICDR</div>
+    <div style="font-size:11.5px; color:{TEXT_MUTED}; margin-top:2px;">Grad-CAM · TTA Uncertainty</div>
     """, unsafe_allow_html=True)
 st.markdown('</div>', unsafe_allow_html=True)
 
@@ -620,7 +593,7 @@ if uploaded_file is None:
     <div style="text-align:center; padding:80px 20px; color:{TEXT_MUTED};">
         <div style="font-size:38px; margin-bottom:14px;">🖼️</div>
         <div style="color:{TEXT_MAIN}; font-size:16px; font-weight:700; margin-bottom:6px;">Awaiting retinal image</div>
-        <div style="font-size:13px;">Upload a fundus photograph above to begin the dual diagnostic pipeline.</div>
+        <div style="font-size:13px;">Upload a fundus photograph above to begin the diagnostic pipeline.</div>
     </div>
     """, unsafe_allow_html=True)
     st.stop()
@@ -628,7 +601,7 @@ if uploaded_file is None:
 file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
 img_bgr = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
 
-# Session State Cache Key
+# SESSION STATE CACHE PERSISTENCE
 image_hash = hashlib.md5(file_bytes.tobytes() if hasattr(file_bytes, "tobytes") else bytes(file_bytes)).hexdigest()
 cache_key = (patient_id, image_hash)
 
@@ -641,11 +614,12 @@ if st.session_state.get("rs_cache_key") != cache_key:
         st.markdown(f"""
         <div class='rs-reject'>
             <b style="color:{DANGER};">✕ SCREENING REJECTED</b><br><br>{message}<br>
-            <span style='font-size:12px; opacity:0.75;'>Pipeline terminated automatically to prevent false model classification predictions on corrupted data configurations.</span>
+            <span style='font-size:12px; opacity:0.75;'>Pipeline terminated automatically to prevent false classification predictions.</span>
         </div>
         """, unsafe_allow_html=True)
         st.stop()
 
+    # Preprocess into normalized [0, 1] float tensor
     img_tensor = preprocess_for_inference(img_bgr)
 
     with st.spinner("Processing Multi-Variant Ensemble Imaging Analytics..."):
@@ -659,13 +633,11 @@ if st.session_state.get("rs_cache_key") != cache_key:
         img_tensor, grad_model, pred_idx, img_bgr, x_center, y_center, radius
     )
 
-    with st.spinner("Mapping Vascular Topography & Hypertensive Risk..."):
+    with st.spinner("Mapping Vascular Topography..."):
         vessel_map = generate_vascular_map(img_bgr, x_center, y_center, radius)
-        # --- Run HR Classifier ---
-        hr_status, hr_confidence, hr_prob, hr_detected = run_hr_inference(hr_model, img_tensor, vessel_map)
 
-    # Save to history with integrated HR data
-    record_logs = save_patient_record(patient_id, pred_name, confidence, attention_index, hr_status, hr_confidence)
+    # Save visit log exactly once per unique (patient, image) pair
+    record_logs = save_patient_record(patient_id, pred_name, confidence, attention_index)
 
     heatmap_color = cv2.applyColorMap(isolated_heatmap, cv2.COLORMAP_JET)
     gradcam_blend = cv2.addWeighted(heatmap_color, 0.38, img_bgr, 0.62, 0)
@@ -685,10 +657,6 @@ if st.session_state.get("rs_cache_key") != cache_key:
         "attention_index": attention_index,
         "dominant_quad": dominant_quad,
         "quad_pct": quad_pct,
-        "hr_status": hr_status,
-        "hr_confidence": hr_confidence,
-        "hr_prob": hr_prob,
-        "hr_detected": hr_detected,
         "record_logs": record_logs,
         "img_rgb": img_rgb,
         "gradcam_rgb": gradcam_rgb,
@@ -696,7 +664,7 @@ if st.session_state.get("rs_cache_key") != cache_key:
         "vessel_map": vessel_map,
     }
 
-# Retrieve cached results
+# Read cached results
 cached = st.session_state["rs_cache_data"]
 probabilities      = cached["probabilities"]
 consensus_status   = cached["consensus_status"]
@@ -707,10 +675,6 @@ confidence         = cached["confidence"]
 attention_index    = cached["attention_index"]
 dominant_quad      = cached["dominant_quad"]
 quad_pct           = cached["quad_pct"]
-hr_status          = cached["hr_status"]
-hr_confidence      = cached["hr_confidence"]
-hr_prob            = cached["hr_prob"]
-hr_detected        = cached["hr_detected"]
 record_logs        = cached["record_logs"]
 img_rgb            = cached["img_rgb"]
 gradcam_rgb        = cached["gradcam_rgb"]
@@ -721,41 +685,31 @@ accent_color       = SEVERITY_COLOR[pred_name]
 referable_prob = float(np.sum([probabilities[i] for i in REFERABLE_CLASSES])) * 100.0
 is_referable = pred_idx in REFERABLE_CLASSES
 referral_color = DANGER if is_referable else EMERALD
-referral_label = "REFERABLE DR" if is_referable else "NON-REFERABLE DR"
+referral_label = "REFERABLE" if is_referable else "NON-REFERABLE"
 
-hr_color = DANGER if hr_detected else EMERALD
-
-# ---------------------------------------------------------------------
-# VERDICT HERO — Integrated Dual DR & HR Indicators
-# ---------------------------------------------------------------------
+# VERDICT HERO
 st.markdown(f"""
 <div class="rs-verdict-hero" style="background: linear-gradient(120deg, {accent_color}18, {SURFACE} 55%);">
-    <div style="color:{TEXT_MUTED}; font-size:11px; text-transform:uppercase; letter-spacing:1px; font-weight:800;">Diabetic Retinopathy Verdict</div>
-    <div style="font-size:42px; font-weight:800; color:{accent_color}; margin:6px 0 12px 0; letter-spacing:-0.5px;">{pred_name}</div>
+    <div style="color:{TEXT_MUTED}; font-size:11px; text-transform:uppercase; letter-spacing:1px; font-weight:800;">Diagnostic Verdict</div>
+    <div style="font-size:44px; font-weight:800; color:{accent_color}; margin:8px 0 14px 0; letter-spacing:-0.5px;">{pred_name}</div>
     <div>
         <span class="rs-pill" style="border-color:{referral_color}; color:{referral_color}; background:{referral_color}14;">
             {"⬤" if is_referable else "○"} {referral_label}
         </span>
-        <span class="rs-pill" style="border-color:{hr_color}; color:{hr_color}; background:{hr_color}14;">
-            🩸 HR Assessment: {hr_status}
-        </span>
         <span class="rs-pill" style="border-color:{BORDER}; color:{TEXT_MUTED};">{consensus_status}</span>
     </div>
     <div class="rs-stat-strip">
-        <div class="rs-stat"><div class="rs-stat-label">DR Confidence</div><div class="rs-stat-value">{confidence:.1f}%</div></div>
-        <div class="rs-stat"><div class="rs-stat-label">HR Confidence</div><div class="rs-stat-value" style="color:{hr_color};">{hr_confidence:.1f}%</div></div>
+        <div class="rs-stat"><div class="rs-stat-label">Confidence</div><div class="rs-stat-value">{confidence:.1f}%</div></div>
         <div class="rs-stat"><div class="rs-stat-label">Attention Intensity</div><div class="rs-stat-value">{attention_index:.1f}%</div></div>
-        <div class="rs-stat"><div class="rs-stat-label">Referable Prob</div><div class="rs-stat-value" style="color:{referral_color};">{referable_prob:.1f}%</div></div>
+        <div class="rs-stat"><div class="rs-stat-label">Referable Probability</div><div class="rs-stat-value" style="color:{referral_color};">{referable_prob:.1f}%</div></div>
         <div class="rs-stat"><div class="rs-stat-label">Dominant Quadrant</div><div class="rs-stat-value" style="font-size:15px;">{dominant_quad}</div></div>
     </div>
 </div>
 <p style="color:{TEXT_MAIN}; font-size:13.5px; line-height:1.65; margin: 18px 4px 0 4px;">{CLASS_DESCRIPTIONS[pred_idx]}</p>
 """, unsafe_allow_html=True)
 
-# ---------------------------------------------------------------------
 # VISUAL EVIDENCE & PROBABILITIES
-# ---------------------------------------------------------------------
-st.markdown('<div class="rs-divider-label">Visual Evidence & Pathology Mapping</div>', unsafe_allow_html=True)
+st.markdown('<div class="rs-divider-label">Visual Evidence</div>', unsafe_allow_html=True)
 
 evidence_col, rail_col = st.columns([1.35, 1], gap="large")
 
@@ -773,7 +727,7 @@ with evidence_col:
     else:
         st.image(boundary_rgb, use_container_width=True)
 
-    st.markdown('<div class="rs-divider-label">DR Grade Probabilities</div>', unsafe_allow_html=True)
+    st.markdown('<div class="rs-divider-label">Grade Probabilities</div>', unsafe_allow_html=True)
     for i in range(NUM_CLASSES):
         cname = CLASS_NAMES[i]
         pct = float(probabilities[i])
@@ -789,18 +743,18 @@ with evidence_col:
             <div class="rs-bar-track"><div class="{bar_fill_class}" style="width:{max(pct*100, 1.5):.2f}%;"></div></div>""",
             unsafe_allow_html=True
         )
+    st.markdown(
+        f"<p style='color:{TEXT_FAINT}; font-size:11.5px; margin-top:10px; line-height:1.5;'>± values reflect predictive uncertainty (std. dev.) across 3 TTA ensemble views.</p>",
+        unsafe_allow_html=True
+    )
 
 with rail_col:
-    # --- Narrative & Directives ---
     visit_stamps = [r["timestamp"].split(" ")[0] for r in record_logs]
     attention_indices = [r["attention_index"] for r in record_logs]
     x_indices = np.arange(len(record_logs))
 
     MIN_VISITS_FOR_TREND = 3
-    r_squared = None
-    slope = None
-    next_x = None
-    next_y_pred = None
+    r_squared, slope, next_x, next_y_pred = None, None, None, None
     if len(record_logs) >= MIN_VISITS_FOR_TREND:
         slope, intercept = np.polyfit(x_indices, attention_indices, 1)
         fitted = slope * x_indices + intercept
@@ -821,38 +775,47 @@ with rail_col:
     if pred_idx == 0:
         xai_text = (
             "The Grad-CAM attention map shows no concentrated, high-intensity activation clusters within the fundus "
-            "field — activations are diffuse and low-magnitude across the retina. This is consistent with a 'No DR' "
-            "classification."
+            "field — activations are diffuse and low-magnitude across the retina. This is consistent with a 'No DR' classification."
         )
     else:
         xai_text = (
-            f"Grad-CAM traces which pixels most influenced the <strong>{pred_name}</strong> prediction. Attention is "
-            f"most concentrated in the <strong>{dominant_quad} quadrant</strong> ({quad_pct:.1f}% of total activation mass)."
+            f"Grad-CAM traces which pixels most influenced the <strong>{pred_name}</strong> prediction. Attention is most concentrated "
+            f"in the <strong>{dominant_quad} quadrant</strong> ({quad_pct:.1f}% of total activation mass)."
         )
-
-    hr_directive_text = (
-        f"Hypertensive Retinopathy screening returned <strong style='color:{hr_color};'>{hr_status}</strong> "
-        f"with {hr_confidence:.1f}% confidence based on vessel caliber and arteriolar crossing density."
-    )
+        if trajectory_alert == "ACCELERATING":
+            xai_text += (
+                f" <span style='color:{DANGER}; font-weight:700;'>⚠ {len(record_logs)}-visit trend shows an upward "
+                f"pathology velocity (+{slope:.1f}%/visit, R²={r_squared:.2f}) — flagged for clinician review.</span>"
+            )
+        elif trajectory_alert == "NOISY_TREND":
+            xai_text += (
+                f" <span style='color:{WARN}; font-weight:600;'>A rising trend is present (+{slope:.1f}%/visit) but "
+                f"the fit is weak (R²={r_squared:.2f}).</span>"
+            )
+        elif trajectory_alert == "STABILIZED":
+            xai_text += " Longitudinal tracking shows no statistically meaningful upward trend."
+        else:
+            xai_text += f" <span style='opacity:0.7;'>Trend analysis needs 3+ visits ({len(record_logs)} on record).</span>"
 
     st.markdown(f"""
     <div class="rs-rail-accent">
         <div class="rs-rail-title" style="color:{ACCENT};">Explainable AI Rationale</div>
         <div class="rs-rail-body">{xai_text}</div>
     </div>
-    <div class="rs-rail" style="border-left: 3px solid {hr_color};">
-        <div class="rs-rail-title" style="color:{hr_color};">Hypertensive Retinopathy (HR) Assessment</div>
-        <div class="rs-rail-body">{hr_directive_text}</div>
-    </div>
     <div class="rs-rail-warn">
         <div class="rs-rail-title" style="color:{WARN};">Clinical Management Directive</div>
         <div class="rs-rail-body">{CLINICAL_DIRECTIVES[pred_idx]}</div>
     </div>
+    <div class="rs-rail">
+        <div class="rs-rail-title" style="color:{TEXT_MUTED};">Referral Classification</div>
+        <div class="rs-rail-body" style="color:{TEXT_MUTED}; font-size:12.5px;">
+            No DR / Mild NPDR → non-referable. Moderate NPDR and above → referable.
+            Patient referable probability is <b style="color:{referral_color};">{referable_prob:.1f}%</b>.
+        </div>
+    </div>
     """, unsafe_allow_html=True)
 
-# ---------------------------------------------------------------------
-# PATIENT HISTORY
-# ---------------------------------------------------------------------
+# PATIENT HISTORY & TREND GRAPH
 st.markdown(f'<div class="rs-divider-label">Visit History · {patient_id}</div>', unsafe_allow_html=True)
 
 hist_col, chart_col = st.columns([1.2, 1], gap="large")
@@ -861,12 +824,10 @@ with hist_col:
     chips_html = ""
     for i, r in enumerate(record_logs):
         sev_color = SEVERITY_COLOR.get(r["diagnosis"], TEXT_MUTED)
-        hr_hist_text = r.get("hr_status", "N/A")
         chips_html += f"""
         <div class="rs-timeline-chip">
             <span style="color:{TEXT_FAINT}; font-size:10px; text-transform:uppercase; font-weight:700;">Visit #{i+1} · {r['timestamp']}</span>
-            <span style="color:{sev_color}; font-size:14px; font-weight:800;">DR: {r['diagnosis']}</span>
-            <span style="color:{TEXT_MUTED}; font-size:11px;">HR: {hr_hist_text}</span>
+            <span style="color:{sev_color}; font-size:14px; font-weight:800;">{r['diagnosis']}</span>
             <span style="color:{TEXT_MUTED}; font-size:11px;">Conf {r['confidence']}% · Attn {r['attention_index']:.1f}%</span>
         </div>
         """
@@ -895,16 +856,13 @@ with chart_col:
     st.pyplot(fig)
     plt.close(fig)
 
-# ---------------------------------------------------------------------
-# EXPORT PDF
-# ---------------------------------------------------------------------
+# EXPORT SUMMARY
 ist_timezone = pytz.timezone('Asia/Kolkata')
 current_date_ist = datetime.now(ist_timezone).strftime('%Y%m%d')
 
 pdf_bytes = generate_clinical_pdf(
     patient_id, pred_name, confidence, attention_index,
-    dominant_quad, quad_pct, CLINICAL_DIRECTIVES[pred_idx], consensus_status,
-    hr_status, hr_confidence
+    dominant_quad, quad_pct, CLINICAL_DIRECTIVES[pred_idx], consensus_status
 )
 
 st.markdown("<br>", unsafe_allow_html=True)
@@ -916,9 +874,7 @@ st.download_button(
     use_container_width=True
 )
 
-# =====================================================================
-#  FOOTER
-# =====================================================================
+# AUDIT TRAIL & MODEL CARD
 st.markdown("<div style='margin-top:30px;'></div>", unsafe_allow_html=True)
 with st.expander("🗂️  Model Card & Audit Trail", expanded=False):
     mc_col1, mc_col2 = st.columns(2, gap="large")
@@ -946,7 +902,6 @@ with st.expander("🗂️  Model Card & Audit Trail", expanded=False):
 
 st.markdown(f"""
 <div style="text-align:center; padding: 22px 0 6px 0; color:{TEXT_FAINT}; font-size:11px; letter-spacing:0.3px;">
-    RetiScan Pro v5 &nbsp;·&nbsp; Dual Decision-support tool for DR & HR screening &nbsp;·&nbsp; Not a standalone diagnostic device
-    &nbsp;·&nbsp; Session: {datetime.now(pytz.timezone('Asia/Kolkata')).strftime('%d %b %Y, %H:%M IST')}
+    RetiScan Pro v5 &nbsp;·&nbsp; Decision-support tool for DR screening triage &nbsp;·&nbsp; Session: {datetime.now(pytz.timezone('Asia/Kolkata')).strftime('%d %b %Y, %H:%M IST')}
 </div>
 """, unsafe_allow_html=True)
