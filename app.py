@@ -3,6 +3,7 @@ import tensorflow as tf
 import numpy as np
 import cv2
 import os
+import sys
 import gdown
 import json
 import hashlib
@@ -10,7 +11,8 @@ import matplotlib.pyplot as plt
 import pytz
 from datetime import datetime
 from fpdf import FPDF
-from skimage.filters import frangi  # Mathematical vascular extraction
+from skimage.filters import frangi  # Mathematical vascular extraction (DR-side vascular topology view only)
+from skimage.morphology import skeletonize
 
 # Set page configurations — wide canvas, no sidebar
 st.set_page_config(
@@ -48,11 +50,10 @@ SEVERITY_COLOR = {
 }
 
 HR_SEVERITY_COLOR = {
-    "Grade 0 (No HR)":        EMERALD,
-    "Grade 1 (Mild HR)":      WARN,
-    "Grade 2 (Moderate HR)":  INFO,
-    "Grade 3 (Severe HR)":    "#ef8b3f",
-    "Grade 4 (Malignant HR)": DANGER,
+    "Grade 0 (No HR)":       EMERALD,
+    "Grade 1 (Mild HR)":     WARN,
+    "Grade 2 (Moderate HR)": INFO,
+    "Grade 3 (Severe HR)":   DANGER,
 }
 
 st.markdown(f"""
@@ -221,6 +222,11 @@ st.markdown(f"""
         padding: 18px 22px; color: {TEXT_MAIN};
     }}
 
+    .rs-warn-box {{
+        background: {SURFACE}; border-left: 4px solid {WARN}; border-radius: 10px;
+        padding: 16px 20px; color: {TEXT_MAIN};
+    }}
+
     .rs-timeline-chip {{
         display: inline-flex; flex-direction: column; gap: 2px;
         background: {SURFACE_ALT}; border: 1px solid {BORDER}; border-radius: 12px;
@@ -237,8 +243,9 @@ NUM_CLASSES = 5
 MODEL_FILENAME = "retiscan_pro_v5_best.keras"
 FILE_ID = "1NFcXDWOMIVyVbA9j2pXUR6b8kCYGVKyq"
 HISTORY_FILE = "patient_history.json"
+RRWNET_DIR = "rrwnet_lib"  # vendor model.py here to avoid runtime git-clone dependency
 
-# --- Original DR Metadata ---
+# --- Original DR Metadata (UNTOUCHED) ---
 CLASS_NAMES = {
     0: "No DR",
     1: "Mild NPDR",
@@ -270,21 +277,21 @@ CLINICAL_DIRECTIVES = {
 
 REFERABLE_CLASSES = {2, 3, 4}
 
-# --- Independent HR Metadata (Keith-Wagener-Barker Scale) ---
+# --- HR Metadata (Keith-Wagener-Barker Scale, Grades 0-3 reachable via AVR) ---
+# Grade 4 (malignant HR / papilledema) is NOT derivable from AVR alone and is
+# explicitly out of scope until a disc-swelling detector is added. See Model Card.
 HR_CLASS_NAMES = {
     0: "Grade 0 (No HR)",
     1: "Grade 1 (Mild HR)",
     2: "Grade 2 (Moderate HR)",
     3: "Grade 3 (Severe HR)",
-    4: "Grade 4 (Malignant HR)"
 }
 
 HR_CLASS_DESCRIPTIONS = {
-    0: "Normal retinal vasculature without evidence of generalized or focal arteriolar narrowing, AV nicking, hemorrhages, or optic disc edema.",
-    1: "Mild generalized retinal arteriolar narrowing and increased arteriolar reflex (early 'copper wiring'). Early response to systemic hypertension.",
-    2: "Marked focal arteriolar attenuation and sharp Arteriovenous (AV) compression/nicking at vascular crossings ('silver wiring').",
-    3: "Severe microvascular injury with flame-shaped hemorrhages, cotton-wool spots (ischemic microinfarcts), and hard exudates.",
-    4: "Malignant Hypertensive Retinopathy — severe Grade 3 vascular pathology combined with Papilledema (optic disc edema). Hypertensive emergency."
+    0: "Arteriolar-to-venular ratio within normal range. No evidence of generalized or focal arteriolar narrowing at the measured B-zone.",
+    1: "Mild generalized retinal arteriolar narrowing (reduced AVR). Early vascular response to systemic hypertension.",
+    2: "Marked arteriolar attenuation consistent with focal narrowing and/or AV nicking at vascular crossings.",
+    3: "Severely reduced AVR consistent with significant microvascular injury. Correlate clinically for hemorrhages, cotton-wool spots, and hard exudates.",
 }
 
 HR_CLINICAL_DIRECTIVES = {
@@ -292,21 +299,22 @@ HR_CLINICAL_DIRECTIVES = {
     1: "Advise primary care physician (PCP) for baseline 24-hour ambulatory blood pressure monitoring (ABPM). Re-evaluate fundus in 12 months.",
     2: "Refer to primary care/cardiology for optimized antihypertensive regimen adjustment. Recheck retinal microvasculature in 3-6 months.",
     3: "URGENT SYSTEMIC EVALUATION REQUIRED: Contact managing physician within 24-48 hours. Target gradual blood pressure reduction.",
-    4: "CRITICAL MEDICAL EMERGENCY: Immediate emergency department / ICU admission for controlled blood pressure management."
 }
 
 MODEL_CARD = {
-    "architecture": "EfficientNetB3 (ImageNet backbone for DR) + Mathematical Frangi Vascular Engine (for HR)",
-    "input_resolution": f"{IMG_SIZE} x {IMG_SIZE} RGB",
-    "training_dataset": "APTOS 2019 Blindness Detection dataset (DR) & Keith-Wagener-Barker parameters (HR)",
-    "num_classes": "5-class ICDR Diabetic Retinopathy & 5-grade Keith-Wagener-Barker Hypertensive Retinopathy",
-    "loss_function": "Categorical Crossentropy / Focal Loss",
-    "reported_accuracy": "~89% top-1 accuracy on validation split (DR)",
-    "explainability_method": "Grad-CAM (DR) & Frangi Vessel Topography Quantification (HR)",
-    "uncertainty_method": "Test-Time Augmentation (TTA) ensemble variance across 3 views",
+    "architecture": "DR: EfficientNetB3 (ImageNet backbone). HR: RRWNet (pretrained artery/vein segmentation, Morano et al. 2024) + clinical Knudtson-Parr-Hubbard AVR computation.",
+    "input_resolution": f"DR: {IMG_SIZE} x {IMG_SIZE} RGB. HR: native resolution, downscaled to max 768px for inference.",
+    "training_dataset": "DR: APTOS 2019 Blindness Detection dataset. HR: RRWNet pretrained on RITE/LES-AV/HRF (not retrained by this project).",
+    "num_classes": "DR: 5-class ICDR. HR: Grades 0-3 of the Keith-Wagener-Barker scale (Grade 4 out of scope, see limitations).",
+    "loss_function": "DR: Categorical Crossentropy / Focal Loss.",
+    "reported_accuracy": "DR: ~89% top-1 accuracy on validation split. HR: inherits RRWNet's published segmentation benchmarks; AVR-to-grade mapping is rule-based and not independently validated by this project on labeled KWB data yet.",
+    "explainability_method": "DR: Grad-CAM, quadrant-mapped. HR: visual artery/vein segmentation masks + numeric AVR/CRAE/CRVE, computed via the clinically standard B-zone + Knudtson formula.",
+    "uncertainty_method": "DR: Test-Time Augmentation (TTA) ensemble variance across 3 views. HR: explicit 'indeterminate' abstain state when fewer than 2 reliable vessels are resolved in the B-zone — no forced grade on weak signal.",
     "known_limitations": [
+        "HR Grade 4 (malignant HR / papilledema) is not derivable from AVR alone and is currently unreachable — flagged, not silently mis-graded.",
+        "HR inference uses simplified preprocessing (resize + normalize) rather than RRWNet's original CLAHE-based pipeline, which may reduce accuracy below the paper's reported benchmarks.",
+        "The AVR-to-KWB-grade cutoffs used here are literature-informed thresholds, not independently calibrated against a labeled KWB dataset by this project.",
         "DR predictions rely strictly on original EfficientNet preprocessing to maintain baseline accuracy.",
-        "HR assessment is an auxiliary vascular decision-support module operating on vessel density and attenuation proxies.",
         "Not a standalone diagnostic tool. Intended as a dual-screening decision-support triage aid."
     ],
     "intended_use": "Screening triage support for combined diabetic and hypertensive retinopathy grading.",
@@ -318,7 +326,7 @@ def focal_loss():
     return loss_fn
 
 # =====================================================================
-#  2. CACHED MODEL ENGINE & LONGITUDINAL DATABASE
+#  2. CACHED DR MODEL ENGINE & LONGITUDINAL DATABASE (UNTOUCHED)
 # =====================================================================
 @st.cache_resource
 def load_retiscan_pipeline():
@@ -346,7 +354,7 @@ try:
     model, grad_model, gradcam_layer_name = load_retiscan_pipeline()
     model_loaded = True
 except Exception as e:
-    st.error(f"Could not initialize model. Error: {e}")
+    st.error(f"Could not initialize DR model. Error: {e}")
     model_loaded = False
 
 def load_patient_history():
@@ -356,7 +364,7 @@ def load_patient_history():
         except: return {}
     return {}
 
-def save_patient_record(p_id, diagnosis, confidence, attention_index, hr_diagnosis="Grade 0 (No HR)"):
+def save_patient_record(p_id, diagnosis, confidence, attention_index, hr_diagnosis="N/A"):
     history = load_patient_history()
     if p_id not in history: history[p_id] = []
 
@@ -378,26 +386,19 @@ def save_patient_record(p_id, diagnosis, confidence, attention_index, hr_diagnos
 #  3. ORIGINAL UNTOUCHED DR PREPROCESSING & INFERENCE ENGINE
 # =====================================================================
 def preprocess_for_inference(img_bgr):
-    """
-    ORIGINAL UNTOUCHED DR PREPROCESSING.
-    Keeps tensor in [0, 255] float32 scale as expected by EfficientNetB3.
-    """
+    """ORIGINAL UNTOUCHED DR PREPROCESSING. EfficientNet handles internal rescaling."""
     rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
     rgb = cv2.resize(rgb, (IMG_SIZE, IMG_SIZE))
-    # DO NOT DIVIDE BY 255.0 HERE — EfficientNet internal rescaling layers handle this!
     tensor = rgb.astype(np.float32)
     return np.expand_dims(tensor, axis=0)
 
 def run_tta_ensemble_inference(model_obj, base_tensor):
-    """
-    ORIGINAL TTA ENSEMBLE FOR DR.
-    Executes standard predictions across base, flipped, and gamma-adjusted views.
-    """
+    """ORIGINAL TTA ENSEMBLE FOR DR."""
     pred_base = model_obj.predict_on_batch(base_tensor)[0]
-    
+
     flipped_tensor = np.flip(base_tensor, axis=2)
     pred_flipped = model_obj.predict_on_batch(flipped_tensor)[0]
-    
+
     gamma_tensor = np.clip(base_tensor * 1.05, 0.0, 255.0)
     pred_gamma = model_obj.predict_on_batch(gamma_tensor)[0]
 
@@ -411,71 +412,185 @@ def run_tta_ensemble_inference(model_obj, base_tensor):
     return fused_probabilities, consensus_badge, per_class_uncertainty_pct
 
 # =====================================================================
-#  4. INDEPENDENT HYPERTENSIVE RETINOPATHY (HR) ENGINE
+#  4. HYPERTENSIVE RETINOPATHY (HR) ENGINE — fully isolated from DR
+#  Public entry point takes ONLY the raw image + fundus geometry.
+#  Never reads dr_pred_idx, DR probabilities, or any DR-pipeline state.
 # =====================================================================
-def analyze_hypertensive_retinopathy(img_bgr, vessel_map, dr_pred_idx, x_center, y_center, radius):
+@st.cache_resource(show_spinner="Loading HR vascular model (one-time)...")
+def load_hr_model():
     """
-    Fully isolated HR Module. Evaluates microvascular topology without altering DR pipeline.
+    Loads pretrained RRWNet A/V segmentation weights (Hugging Face).
+    Cached once per server process. torch is imported lazily so app
+    startup stays light until an image is actually uploaded.
     """
-    h, w = vessel_map.shape[:2]
-    
-    mask = np.zeros((h, w), dtype=np.uint8)
-    cv2.circle(mask, (int(x_center), int(y_center)), int(radius * 0.88), 255, -1)
-    fundus_pixels = cv2.countNonZero(mask) + 1e-6
-    
-    vessel_pixels = cv2.countNonZero(cv2.bitwise_and(vessel_map, vessel_map, mask=mask))
-    vdi = (vessel_pixels / fundus_pixels) * 100.0
-    
-    thick_vessels = cv2.morphologyEx(vessel_map, cv2.MORPH_OPEN, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3)))
-    thick_pixels = cv2.countNonZero(cv2.bitwise_and(thick_vessels, thick_vessels, mask=mask)) + 1e-6
-    thin_pixels = max(1.0, vessel_pixels - thick_pixels)
-    avr_proxy = float(np.clip((thin_pixels / thick_pixels) * 0.55, 0.35, 0.85))
-    
+    import torch
+
+    if not os.path.exists(RRWNET_DIR):
+        exit_code = os.system(f"git clone --depth 1 https://github.com/j-morano/rrwnet {RRWNET_DIR} 2>/dev/null")
+        if exit_code != 0 or not os.path.exists(RRWNET_DIR):
+            raise RuntimeError(
+                "Could not fetch RRWNet architecture definition. "
+                "Recommended fix: vendor rrwnet_lib/model.py directly into the repo "
+                "instead of relying on a runtime git clone."
+            )
+
+    if RRWNET_DIR not in sys.path:
+        sys.path.insert(0, RRWNET_DIR)
+
+    from model import RRWNet as RRWNetModel
+    from huggingface_hub import PyTorchModelHubMixin
+
+    class RRWNet(RRWNetModel, PyTorchModelHubMixin):
+        def __init__(self, input_ch=3, output_ch=3, base_ch=64, iterations=5):
+            super().__init__(input_ch, output_ch, base_ch, iterations)
+
+    # Cap CPU threads so PyTorch doesn't starve TensorFlow's DR inference
+    # running in the same process.
+    torch.set_num_threads(2)
+
+    hr_model = RRWNet.from_pretrained("j-morano/rrwnet-rite")
+    hr_model.eval()
+    return hr_model
+
+
+def run_av_segmentation(img_bgr, max_dim=768):
+    """
+    Runs A/V segmentation. Image is downscaled before inference — this is
+    the main lever against OOM crashes on memory-constrained deployments.
+    """
+    import torch
+
+    hr_model = load_hr_model()
+    h0, w0 = img_bgr.shape[:2]
+    scale = min(1.0, max_dim / max(h0, w0))
+    img_small = cv2.resize(img_bgr, (int(w0 * scale), int(h0 * scale))) if scale < 1.0 else img_bgr.copy()
+
+    rgb = cv2.cvtColor(img_small, cv2.COLOR_BGR2RGB).astype(np.float32)
+    tensor = torch.from_numpy(rgb).permute(2, 0, 1).unsqueeze(0) / 255.0
+
+    with torch.no_grad():
+        output = hr_model(tensor)
+
+    pred = output[-1] if isinstance(output, (list, tuple)) else output  # final refined iteration
+    pred = torch.sigmoid(pred)[0].permute(1, 2, 0).numpy()
+    pred_full = cv2.resize(pred, (w0, h0))
+
+    artery_mask = (pred_full[..., 0] > 0.5).astype(np.uint8) * 255
+    vein_mask   = (pred_full[..., 1] > 0.5).astype(np.uint8) * 255
+    vessel_mask = (pred_full[..., 2] > 0.5).astype(np.uint8) * 255
+    return artery_mask, vein_mask, vessel_mask
+
+
+def detect_optic_disc(img_bgr, fundus_x, fundus_y, fundus_radius):
+    """Brightness-based disc localization within the known fundus circle."""
     gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
-    contrast_std = float(np.std(gray[mask > 0]))
-    
-    raw_scores = np.zeros(5)
-    
-    if vdi > 4.0 and avr_proxy > 0.62 and contrast_std < 38.0:
-        raw_scores[0] = 0.85 + (avr_proxy * 0.15)
+    circle_mask = np.zeros_like(gray)
+    cv2.circle(circle_mask, (int(fundus_x), int(fundus_y)), int(fundus_radius * 0.9), 255, -1)
+    masked = cv2.bitwise_and(gray, gray, mask=circle_mask)
+    blurred = cv2.GaussianBlur(masked, (25, 25), 0)
+    _, _, _, max_loc = cv2.minMaxLoc(blurred)
+    disc_radius = fundus_radius * 0.12  # typical disc:fundus ratio
+    return max_loc[0], max_loc[1], disc_radius
+
+
+def compute_b_zone_mask(h, w, disc_x, disc_y, disc_radius):
+    """Standard clinical B-zone: 0.5-1.0 disc diameters from the disc margin."""
+    inner_r, outer_r = disc_radius * 1.5, disc_radius * 2.0
+    yy, xx = np.ogrid[:h, :w]
+    dist = np.sqrt((xx - disc_x) ** 2 + (yy - disc_y) ** 2)
+    return (((dist >= inner_r) & (dist <= outer_r)).astype(np.uint8)) * 255
+
+
+def measure_vessel_calibers(vessel_channel_mask, b_zone_mask, top_n=6):
+    """Approximates vessel width per segment as area / skeleton-length within the B-zone."""
+    masked = cv2.bitwise_and(vessel_channel_mask, b_zone_mask)
+    if cv2.countNonZero(masked) < 20:
+        return []
+    skeleton = skeletonize(masked > 0)
+    num_labels, labels_im, stats, _ = cv2.connectedComponentsWithStats((masked > 0).astype(np.uint8), connectivity=8)
+    widths = []
+    for lbl in range(1, num_labels):
+        area = stats[lbl, cv2.CC_STAT_AREA]
+        skel_len = np.sum(skeleton & (labels_im == lbl))
+        if skel_len > 3:
+            widths.append(area / skel_len)
+    return sorted(widths, reverse=True)[:top_n]
+
+
+def knudtson_avr(artery_widths, vein_widths):
+    """Knudtson-Parr-Hubbard iterative pairing formula -> CRAE, CRVE, AVR."""
+    def combine(widths, is_artery):
+        w = sorted(widths)
+        while len(w) > 1:
+            new_w, i, j = [], 0, len(w) - 1
+            while i < j:
+                coef = 0.88 if is_artery else 0.95
+                new_w.append(coef * np.sqrt(w[i] ** 2 + w[j] ** 2))
+                i += 1; j -= 1
+            if i == j:
+                new_w.append(w[i])
+            w = sorted(new_w)
+        return w[0] if w else None
+
+    if len(artery_widths) < 2 or len(vein_widths) < 2:
+        return None, None, None  # not enough resolved vessels -> abstain, don't force a grade
+    crae, crve = combine(artery_widths, True), combine(vein_widths, False)
+    if not crae or not crve or crve == 0:
+        return None, None, None
+    return crae, crve, crae / crve
+
+
+def analyze_hypertensive_retinopathy(img_bgr, x_center, y_center, radius):
+    """
+    PUBLIC ENTRY POINT. Signature takes ONLY raw image + fundus geometry —
+    no DR prediction, no DR probabilities, no shared state with the DR path.
+    Fails soft: any error returns an 'error'/'indeterminate' status instead
+    of raising and crashing the Streamlit process.
+    """
+    try:
+        artery_mask, vein_mask, vessel_mask = run_av_segmentation(img_bgr)
+    except Exception as e:
+        return {"status": "error", "pred_name": "HR Engine Unavailable",
+                "message": f"Segmentation failed safely: {e}"}
+
+    try:
+        disc_x, disc_y, disc_r = detect_optic_disc(img_bgr, x_center, y_center, radius)
+        h, w = img_bgr.shape[:2]
+        b_zone = compute_b_zone_mask(h, w, disc_x, disc_y, disc_r)
+
+        artery_widths = measure_vessel_calibers(artery_mask, b_zone)
+        vein_widths = measure_vessel_calibers(vein_mask, b_zone)
+        crae, crve, avr = knudtson_avr(artery_widths, vein_widths)
+    except Exception as e:
+        return {"status": "error", "pred_name": "HR Analysis Failed",
+                "message": f"AVR computation failed safely: {e}",
+                "artery_mask": artery_mask, "vein_mask": vein_mask, "vessel_mask": vessel_mask}
+
+    if avr is None:
+        return {"status": "indeterminate", "pred_name": "Indeterminate — Insufficient Vascular Signal",
+                "message": "Not enough clearly resolved arteries/veins in the B-zone for a reliable AVR.",
+                "artery_mask": artery_mask, "vein_mask": vein_mask, "vessel_mask": vessel_mask}
+
+    if avr >= 0.65:
+        idx, name = 0, "Grade 0 (No HR)"
+    elif avr >= 0.58:
+        idx, name = 1, "Grade 1 (Mild HR)"
+    elif avr >= 0.50:
+        idx, name = 2, "Grade 2 (Moderate HR)"
     else:
-        raw_scores[0] = 0.15
-        
-    if 0.52 < avr_proxy <= 0.62 or (3.0 < vdi <= 4.5):
-        raw_scores[1] = 0.75
-        
-    if avr_proxy <= 0.52 or contrast_std > 42.0:
-        raw_scores[2] = 0.80
-        
-    if dr_pred_idx in [2, 3] or contrast_std > 52.0:
-        raw_scores[3] = 0.88
-        
-    if dr_pred_idx == 4 or contrast_std > 65.0:
-        raw_scores[4] = 0.92
+        idx, name = 3, "Grade 3 (Severe HR)"
+    # Grade 4 (malignant) requires papilledema detection, not derivable from
+    # AVR alone — explicit scope limitation until a disc-swelling detector
+    # is added (see Model Card).
 
-    exp_scores = np.exp(raw_scores * 3.0)
-    hr_probs = exp_scores / np.sum(exp_scores)
-    
-    hr_pred_idx = int(np.argmax(hr_probs))
-    hr_pred_name = HR_CLASS_NAMES[hr_pred_idx]
-    hr_confidence = float(hr_probs[hr_pred_idx] * 100.0)
-    
-    lesion_burden_score = min(100.0, (contrast_std / 70.0) * 100.0)
-
-    return {
-        "pred_idx": hr_pred_idx,
-        "pred_name": hr_pred_name,
-        "confidence": hr_confidence,
-        "probabilities": hr_probs,
-        "vdi": vdi,
-        "avr_proxy": avr_proxy,
-        "lesion_burden": lesion_burden_score
-    }
+    return {"status": "ok", "pred_idx": idx, "pred_name": name, "avr": round(float(avr), 3),
+            "crae": round(float(crae), 2), "crve": round(float(crve), 2),
+            "artery_mask": artery_mask, "vein_mask": vein_mask, "vessel_mask": vessel_mask}
 
 # =====================================================================
 #  5. AUXILIARY SCREENING & REPORT GENERATION UTILITIES
 # =====================================================================
-def generate_clinical_pdf(p_id, verdict, conf, attn_idx, quad, quad_pct, directive, consensus, hr_verdict, hr_conf):
+def generate_clinical_pdf(p_id, verdict, conf, attn_idx, quad, quad_pct, directive, consensus, hr_results):
     pdf = FPDF()
     pdf.add_page()
     pdf.set_font("Helvetica", "B", 18)
@@ -508,17 +623,23 @@ def generate_clinical_pdf(p_id, verdict, conf, attn_idx, quad, quad_pct, directi
     # HR Section
     pdf.set_font("Helvetica", "B", 13)
     pdf.set_text_color(94, 177, 239)
-    pdf.cell(0, 8, f"2. Hypertensive Retinopathy (HR): {hr_verdict}", ln=True)
+    pdf.cell(0, 8, f"2. Hypertensive Retinopathy (HR): {hr_results.get('pred_name', 'N/A')}", ln=True)
     pdf.set_font("Helvetica", "", 11)
     pdf.set_text_color(0, 0, 0)
-    pdf.cell(0, 7, f"   - HR Grading Confidence: {hr_conf:.2f}%", ln=True)
-    pdf.cell(0, 7, f"   - Scale: Keith-Wagener-Barker Microvascular Classification", ln=True)
+    if hr_results.get("status") == "ok":
+        pdf.cell(0, 7, f"   - Arteriolar-to-Venular Ratio (AVR): {hr_results['avr']}", ln=True)
+        pdf.cell(0, 7, f"   - CRAE: {hr_results['crae']}  |  CRVE: {hr_results['crve']}", ln=True)
+        pdf.cell(0, 7, f"   - Scale: Keith-Wagener-Barker Grades 0-3 (Grade 4 out of current scope)", ln=True)
+    else:
+        pdf.cell(0, 7, f"   - Status: {hr_results.get('status', 'unknown').upper()}", ln=True)
+        pdf.multi_cell(0, 6, f"   - {hr_results.get('message', '')}")
     pdf.ln(6)
 
     pdf.set_font("Helvetica", "B", 11)
     pdf.cell(0, 7, "Official Management Protocol Directives:", ln=True)
     pdf.set_font("Helvetica", "I", 10)
-    pdf.multi_cell(0, 5, f"DR: {directive}\nHR: {HR_CLINICAL_DIRECTIVES[list(HR_CLASS_NAMES.values()).index(hr_verdict)]}")
+    hr_directive = HR_CLINICAL_DIRECTIVES.get(hr_results.get("pred_idx"), "N/A — see HR status above.")
+    pdf.multi_cell(0, 5, f"DR: {directive}\nHR: {hr_directive}")
 
     return bytes(pdf.output())
 
@@ -558,6 +679,7 @@ def run_pre_computing_screening(img_bgr):
     return True, "PASSED", x_center, y_center, radius
 
 def generate_vascular_map(img_bgr, x_center, y_center, radius):
+    """DR-side vascular topology view only — independent of the HR engine."""
     h, w, _ = img_bgr.shape
     _, g, _ = cv2.split(img_bgr)
 
@@ -673,7 +795,7 @@ with tb_col3:
     st.markdown('<div class="rs-toolbar-label">Active Pipelines</div>', unsafe_allow_html=True)
     st.markdown(f"""
     <div style="font-size:13px; font-weight:700; color:{TEXT_MAIN}; margin-top:6px;">1. DR: EfficientNetB3 (ICDR)</div>
-    <div style="font-size:11.5px; color:{TEXT_MUTED}; margin-top:2px;">2. HR: Vascular Topology Engine</div>
+    <div style="font-size:11.5px; color:{TEXT_MUTED}; margin-top:2px;">2. HR: RRWNet A/V Segmentation + Knudtson AVR</div>
     """, unsafe_allow_html=True)
 st.markdown('</div>', unsafe_allow_html=True)
 
@@ -725,14 +847,14 @@ if st.session_state.get("rs_cache_key") != cache_key:
         img_tensor, grad_model, pred_idx, img_bgr, x_center, y_center, radius
     )
 
-    with st.spinner("Analyzing Hypertensive Retinopathy & Vascular Topography..."):
-        vessel_map = generate_vascular_map(img_bgr, x_center, y_center, radius)
-        hr_results = analyze_hypertensive_retinopathy(
-            img_bgr, vessel_map, pred_idx, x_center, y_center, radius
-        )
+    with st.spinner("Analyzing Hypertensive Retinopathy (isolated A/V pipeline)..."):
+        vessel_map = generate_vascular_map(img_bgr, x_center, y_center, radius)  # DR display only
+        # NOTE: HR call takes ONLY the raw image + fundus geometry — no dr_pred_idx,
+        # no DR probabilities, no vessel_map. Independence is structural, not by convention.
+        hr_results = analyze_hypertensive_retinopathy(img_bgr, x_center, y_center, radius)
 
     record_logs = save_patient_record(
-        patient_id, pred_name, confidence, attention_index, hr_results["pred_name"]
+        patient_id, pred_name, confidence, attention_index, hr_results.get("pred_name", "N/A")
     )
 
     heatmap_color = cv2.applyColorMap(isolated_heatmap, cv2.COLORMAP_JET)
@@ -890,73 +1012,86 @@ with rail_col:
 
 # =====================================================================
 #  SECTION 2: HYPERTENSIVE RETINOPATHY (HR) EVALUATION DECK
+#  Fully isolated pipeline — RRWNet A/V segmentation + Knudtson AVR.
 # =====================================================================
 st.markdown('<div class="rs-divider-label">Hypertensive Retinopathy (HR) Analysis Deck</div>', unsafe_allow_html=True)
 
-hr_color = HR_SEVERITY_COLOR[hr_results["pred_name"]]
-hr_is_severe = hr_results["pred_idx"] >= 2
-hr_ref_color = DANGER if hr_is_severe else EMERALD
-
-hr_col1, hr_col2 = st.columns([1.35, 1], gap="large")
-
-with hr_col1:
+if hr_results.get("status") != "ok":
+    # Soft-fail states — engine error or insufficient vascular signal.
+    # Never crash the page; always give the user a clear, honest status.
+    icon = "⚠" if hr_results.get("status") == "indeterminate" else "✕"
     st.markdown(f"""
-    <div class="rs-verdict-hero" style="background: linear-gradient(120deg, {hr_color}18, {SURFACE} 55%); border: 1px solid {BORDER}; padding: 24px 28px;">
-        <div style="color:{TEXT_MUTED}; font-size:11px; text-transform:uppercase; letter-spacing:1px; font-weight:800;">Hypertensive Diagnostic Verdict</div>
-        <div style="font-size:36px; font-weight:800; color:{hr_color}; margin:6px 0 10px 0; letter-spacing:-0.5px;">{hr_results['pred_name']}</div>
-        <div>
-            <span class="rs-pill" style="border-color:{hr_ref_color}; color:{hr_ref_color}; background:{hr_ref_color}14;">
-                {"⬤ CARDIO-VASCULAR ALERT" if hr_is_severe else "○ SYSTEMICALLY STABLE"}
-            </span>
-            <span class="rs-pill" style="border-color:{BORDER}; color:{TEXT_MUTED};">KWB SCALE</span>
-        </div>
-        <div class="rs-stat-strip">
-            <div class="rs-stat"><div class="rs-stat-label">HR Confidence</div><div class="rs-stat-value">{hr_results['confidence']:.1f}%</div></div>
-            <div class="rs-stat"><div class="rs-stat-label">Vessel Density (VDI)</div><div class="rs-stat-value">{hr_results['vdi']:.2f}%</div></div>
-            <div class="rs-stat"><div class="rs-stat-label">AV Ratio Proxy</div><div class="rs-stat-value">{hr_results['avr_proxy']:.2f}</div></div>
-            <div class="rs-stat"><div class="rs-stat-label">Lesion Burden</div><div class="rs-stat-value">{hr_results['lesion_burden']:.1f}%</div></div>
-        </div>
-    </div>
-    <p style="color:{TEXT_MAIN}; font-size:13px; line-height:1.6; margin: 12px 4px 18px 4px;">{HR_CLASS_DESCRIPTIONS[hr_results['pred_idx']]}</p>
-    """, unsafe_allow_html=True)
-
-    st.markdown('<div class="rs-divider-label">HR Keith-Wagener-Barker Probabilities</div>', unsafe_allow_html=True)
-    for i in range(5):
-        hr_cname = HR_CLASS_NAMES[i]
-        hr_pct = float(hr_results["probabilities"][i])
-        hr_is_pred = (i == hr_results["pred_idx"])
-        hr_label_color = TEXT_MAIN if hr_is_pred else TEXT_MUTED
-        hr_weight = 800 if hr_is_pred else 500
-        hr_bar_class = "rs-bar-fill" if hr_is_pred else "rs-bar-fill-muted"
-        st.markdown(
-            f"""<div class='rs-prob-row'><span style='color:{hr_label_color}; font-weight:{hr_weight};'>{hr_cname}</span>
-            <span style='color:{hr_label_color}; font-weight:{hr_weight};'>{hr_pct*100:.1f}%</span></div>
-            <div class="rs-bar-track"><div class="{hr_bar_class}" style="width:{max(hr_pct*100, 1.5):.2f}%;"></div></div>""",
-            unsafe_allow_html=True
-        )
-
-with hr_col2:
-    st.markdown(f"""
-    <div class="rs-rail-accent" style="border-left-color: {INFO};">
-        <div class="rs-rail-title" style="color:{INFO};">Vascular Topography Rationale</div>
-        <div class="rs-rail-body">
-            Calculated <strong>Vessel Density Index (VDI)</strong> is <code>{hr_results['vdi']:.2f}%</code> with an estimated
-            <strong>Arteriolar-to-Venular Ratio (AVR)</strong> of <code>{hr_results['avr_proxy']:.2f}</code>.
-            {"Focal arteriolar attenuation and vascular crossing compressions detected." if hr_results['avr_proxy'] < 0.58 else "Vascular caliber ratios remain within non-pathological thresholds."}
-        </div>
-    </div>
-    <div class="rs-rail-warn">
-        <div class="rs-rail-title" style="color:{WARN};">HR Systemic Management Directive</div>
-        <div class="rs-rail-body">{HR_CLINICAL_DIRECTIVES[hr_results['pred_idx']]}</div>
-    </div>
-    <div class="rs-rail">
-        <div class="rs-rail-title" style="color:{TEXT_MUTED};">Multi-Disease Interaction Note</div>
-        <div class="rs-rail-body" style="color:{TEXT_MUTED}; font-size:12.5px;">
-            Concurrent Diabetic Retinopathy (<strong>{pred_name}</strong>) and Hypertensive Retinopathy (<strong>{hr_results['pred_name']}</strong>)
-            exponentially increase the risk of macular edema and vision loss.
+    <div class="rs-warn-box">
+        <b style="color:{WARN};">{icon} {hr_results.get('pred_name', 'HR Unavailable')}</b><br><br>
+        {hr_results.get('message', 'No further detail available.')}
+        <div style="margin-top:10px; font-size:12px; color:{TEXT_MUTED};">
+            This does not affect the Diabetic Retinopathy result above — the two pipelines are fully independent.
         </div>
     </div>
     """, unsafe_allow_html=True)
+
+    # Still show the raw A/V masks if segmentation itself succeeded, even if AVR couldn't be computed
+    if "artery_mask" in hr_results:
+        m1, m2, m3 = st.columns(3)
+        with m1: st.image(hr_results["artery_mask"], caption="Detected Arteries", use_container_width=True, clamp=True)
+        with m2: st.image(hr_results["vein_mask"], caption="Detected Veins", use_container_width=True, clamp=True)
+        with m3: st.image(hr_results["vessel_mask"], caption="Vessel Union", use_container_width=True, clamp=True)
+else:
+    hr_color = HR_SEVERITY_COLOR[hr_results["pred_name"]]
+    hr_is_severe = hr_results["pred_idx"] >= 2
+    hr_ref_color = DANGER if hr_is_severe else EMERALD
+
+    hr_col1, hr_col2 = st.columns([1.35, 1], gap="large")
+
+    with hr_col1:
+        st.markdown(f"""
+        <div class="rs-verdict-hero" style="background: linear-gradient(120deg, {hr_color}18, {SURFACE} 55%); border: 1px solid {BORDER}; padding: 24px 28px;">
+            <div style="color:{TEXT_MUTED}; font-size:11px; text-transform:uppercase; letter-spacing:1px; font-weight:800;">Hypertensive Diagnostic Verdict</div>
+            <div style="font-size:36px; font-weight:800; color:{hr_color}; margin:6px 0 10px 0; letter-spacing:-0.5px;">{hr_results['pred_name']}</div>
+            <div>
+                <span class="rs-pill" style="border-color:{hr_ref_color}; color:{hr_ref_color}; background:{hr_ref_color}14;">
+                    {"⬤ CARDIO-VASCULAR ALERT" if hr_is_severe else "○ SYSTEMICALLY STABLE"}
+                </span>
+                <span class="rs-pill" style="border-color:{BORDER}; color:{TEXT_MUTED};">KWB SCALE (Grades 0-3)</span>
+            </div>
+            <div class="rs-stat-strip">
+                <div class="rs-stat"><div class="rs-stat-label">AVR</div><div class="rs-stat-value">{hr_results['avr']}</div></div>
+                <div class="rs-stat"><div class="rs-stat-label">CRAE</div><div class="rs-stat-value">{hr_results['crae']}</div></div>
+                <div class="rs-stat"><div class="rs-stat-label">CRVE</div><div class="rs-stat-value">{hr_results['crve']}</div></div>
+            </div>
+        </div>
+        <p style="color:{TEXT_MAIN}; font-size:13px; line-height:1.6; margin: 12px 4px 18px 4px;">{HR_CLASS_DESCRIPTIONS[hr_results['pred_idx']]}</p>
+        """, unsafe_allow_html=True)
+
+        st.markdown('<div class="rs-divider-label">A/V Segmentation Evidence</div>', unsafe_allow_html=True)
+        m1, m2, m3 = st.columns(3)
+        with m1: st.image(hr_results["artery_mask"], caption="Arteries", use_container_width=True, clamp=True)
+        with m2: st.image(hr_results["vein_mask"], caption="Veins", use_container_width=True, clamp=True)
+        with m3: st.image(hr_results["vessel_mask"], caption="Vessel Union", use_container_width=True, clamp=True)
+
+    with hr_col2:
+        st.markdown(f"""
+        <div class="rs-rail-accent" style="border-left-color: {INFO};">
+            <div class="rs-rail-title" style="color:{INFO};">Vascular Topography Rationale</div>
+            <div class="rs-rail-body">
+                Arteriolar-to-Venular Ratio (AVR) of <code>{hr_results['avr']}</code> computed via the clinically
+                standard Knudtson-Parr-Hubbard formula, using vessel calibers measured in the B-zone
+                (0.5-1.0 optic disc diameters from the disc margin) of independently segmented arteries
+                (CRAE {hr_results['crae']}) and veins (CRVE {hr_results['crve']}).
+            </div>
+        </div>
+        <div class="rs-rail-warn">
+            <div class="rs-rail-title" style="color:{WARN};">HR Systemic Management Directive</div>
+            <div class="rs-rail-body">{HR_CLINICAL_DIRECTIVES[hr_results['pred_idx']]}</div>
+        </div>
+        <div class="rs-rail">
+            <div class="rs-rail-title" style="color:{TEXT_MUTED};">Multi-Disease Interaction Note</div>
+            <div class="rs-rail-body" style="color:{TEXT_MUTED}; font-size:12.5px;">
+                Concurrent Diabetic Retinopathy (<strong>{pred_name}</strong>) and Hypertensive Retinopathy (<strong>{hr_results['pred_name']}</strong>)
+                exponentially increase the risk of macular edema and vision loss.
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
 
 # =====================================================================
 #  SECTION 3: PATIENT HISTORY & TREND GRAPH
@@ -1012,7 +1147,7 @@ current_date_ist = datetime.now(ist_timezone).strftime('%Y%m%d')
 pdf_bytes = generate_clinical_pdf(
     patient_id, pred_name, confidence, attention_index,
     dominant_quad, quad_pct, CLINICAL_DIRECTIVES[pred_idx], consensus_status,
-    hr_results["pred_name"], hr_results["confidence"]
+    hr_results
 )
 
 st.markdown("<br>", unsafe_allow_html=True)
@@ -1038,7 +1173,7 @@ with st.expander("🗂️  Model Card & Audit Trail", expanded=False):
             <b style="color:{TEXT_MAIN};">Training Corpora:</b> {MODEL_CARD['training_dataset']}<br>
             <b style="color:{TEXT_MAIN};">Class Scope:</b> {MODEL_CARD['num_classes']}<br>
             <b style="color:{TEXT_MAIN};">Loss Function:</b> {MODEL_CARD['loss_function']}<br>
-            <b style="color:{TEXT_MAIN};">DR Validation Score:</b> {MODEL_CARD['reported_accuracy']}<br>
+            <b style="color:{TEXT_MAIN};">Reported Accuracy:</b> {MODEL_CARD['reported_accuracy']}<br>
             <b style="color:{TEXT_MAIN};">Explainability Engine:</b> {MODEL_CARD['explainability_method']}<br>
             <b style="color:{TEXT_MAIN};">Uncertainty Pipeline:</b> {MODEL_CARD['uncertainty_method']}
         </p>
