@@ -517,6 +517,21 @@ def load_hr_model():
     return hr_model, device
 
 
+def _pad_to_multiple(img, multiple=32):
+    """
+    Pads an image so both dimensions are divisible by `multiple`.
+    Required because RRWNet's internal skip connections concatenate
+    encoder/decoder feature maps that must match exactly — an input
+    size not divisible by the network's downsampling factor causes a
+    'sizes must match' crash deep inside the model.
+    """
+    h, w = img.shape[:2]
+    pad_h = (multiple - h % multiple) % multiple
+    pad_w = (multiple - w % multiple) % multiple
+    padded = cv2.copyMakeBorder(img, 0, pad_h, 0, pad_w, cv2.BORDER_REFLECT)
+    return padded, h, w
+
+
 def run_av_segmentation(img_bgr, max_dim=768):
     """Runs A/V segmentation. Image is downscaled first to cap memory use."""
     import torch
@@ -526,7 +541,10 @@ def run_av_segmentation(img_bgr, max_dim=768):
     scale = min(1.0, max_dim / max(h0, w0))
     img_small = cv2.resize(img_bgr, (int(w0 * scale), int(h0 * scale))) if scale < 1.0 else img_bgr.copy()
 
-    rgb = cv2.cvtColor(img_small, cv2.COLOR_BGR2RGB).astype(np.float32)
+    # Pad to a multiple of 32 so encoder/decoder feature maps align exactly
+    img_padded, h_small, w_small = _pad_to_multiple(img_small, multiple=32)
+
+    rgb = cv2.cvtColor(img_padded, cv2.COLOR_BGR2RGB).astype(np.float32)
     tensor = (torch.from_numpy(rgb).permute(2, 0, 1).unsqueeze(0) / 255.0).to(device)
 
     with torch.no_grad():
@@ -534,6 +552,8 @@ def run_av_segmentation(img_bgr, max_dim=768):
 
     pred = output[-1] if isinstance(output, (list, tuple)) else output  # final refined iteration
     pred = torch.sigmoid(pred)[0].permute(1, 2, 0).cpu().numpy()
+
+    pred = pred[:h_small, :w_small, :]  # crop off the padding before resizing back up
     pred_full = cv2.resize(pred, (w0, h0))
 
     artery_mask = (pred_full[..., 0] > 0.5).astype(np.uint8) * 255
@@ -731,12 +751,26 @@ def analyze_hypertensive_retinopathy(img_bgr, x_center, y_center, radius):
 # =====================================================================
 #  5. AUXILIARY SCREENING & REPORT GENERATION UTILITIES
 # =====================================================================
+def _pdf_safe(text):
+    """
+    fpdf2's built-in Helvetica font only supports Latin-1. Any dynamic
+    string (error messages, directives, exception text) can contain
+    characters outside that range (em-dashes, curly quotes, ±, etc.)
+    and crash the PDF export with FPDFUnicodeEncodingException. This
+    sanitizes any string before it's handed to fpdf, replacing
+    unencodable characters instead of crashing.
+    """
+    if text is None:
+        return ""
+    return str(text).encode("latin-1", "replace").decode("latin-1")
+
+
 def generate_clinical_pdf(p_id, verdict, conf, attn_idx, quad, quad_pct, directive, consensus, hr_results):
     pdf = FPDF()
     pdf.add_page()
     pdf.set_font("Helvetica", "B", 18)
     pdf.set_text_color(16, 185, 129)
-    pdf.cell(0, 10, "RETISCAN PRO DIAGNOSTIC SUMMARY REPORT", ln=True, align="C")
+    pdf.cell(0, 10, _pdf_safe("RETISCAN PRO DIAGNOSTIC SUMMARY REPORT"), ln=True, align="C")
     pdf.ln(6)
 
     ist_timezone = pytz.timezone('Asia/Kolkata')
@@ -744,43 +778,43 @@ def generate_clinical_pdf(p_id, verdict, conf, attn_idx, quad, quad_pct, directi
 
     pdf.set_font("Helvetica", "", 11)
     pdf.set_text_color(0, 0, 0)
-    pdf.cell(0, 7, f"Patient Tracking Key: {p_id}", ln=True)
-    pdf.cell(0, 7, f"Generated Timestamp: {current_time_ist}", ln=True)
-    pdf.cell(0, 7, f"Ensemble Integrity State: {consensus}", ln=True)
+    pdf.cell(0, 7, _pdf_safe(f"Patient Tracking Key: {p_id}"), ln=True)
+    pdf.cell(0, 7, _pdf_safe(f"Generated Timestamp: {current_time_ist}"), ln=True)
+    pdf.cell(0, 7, _pdf_safe(f"Ensemble Integrity State: {consensus}"), ln=True)
     pdf.line(10, pdf.get_y() + 2, 200, pdf.get_y() + 2)
     pdf.ln(6)
 
     # DR Section
     pdf.set_font("Helvetica", "B", 13)
     pdf.set_text_color(229, 111, 34)
-    pdf.cell(0, 8, f"1. Diabetic Retinopathy (DR): {verdict}", ln=True)
+    pdf.cell(0, 8, _pdf_safe(f"1. Diabetic Retinopathy (DR): {verdict}"), ln=True)
     pdf.set_font("Helvetica", "", 11)
     pdf.set_text_color(0, 0, 0)
-    pdf.cell(0, 7, f"   - DR Confidence: {conf:.2f}%", ln=True)
-    pdf.cell(0, 7, f"   - Neuro-Attention Mapping Index: {attn_idx:.1f}%", ln=True)
-    pdf.cell(0, 7, f"   - Dominant Focus: {quad} Quadrant ({quad_pct:.1f}%)", ln=True)
+    pdf.cell(0, 7, _pdf_safe(f"   - DR Confidence: {conf:.2f}%"), ln=True)
+    pdf.cell(0, 7, _pdf_safe(f"   - Neuro-Attention Mapping Index: {attn_idx:.1f}%"), ln=True)
+    pdf.cell(0, 7, _pdf_safe(f"   - Dominant Focus: {quad} Quadrant ({quad_pct:.1f}%)"), ln=True)
     pdf.ln(3)
 
     # HR Section
     pdf.set_font("Helvetica", "B", 13)
     pdf.set_text_color(94, 177, 239)
-    pdf.cell(0, 8, f"2. Hypertensive Retinopathy (HR): {hr_results.get('pred_name', 'N/A')}", ln=True)
+    pdf.cell(0, 8, _pdf_safe(f"2. Hypertensive Retinopathy (HR): {hr_results.get('pred_name', 'N/A')}"), ln=True)
     pdf.set_font("Helvetica", "", 11)
     pdf.set_text_color(0, 0, 0)
     if hr_results.get("status") == "ok":
-        pdf.cell(0, 7, f"   - Arteriolar-to-Venular Ratio (AVR): {hr_results['avr']}", ln=True)
-        pdf.cell(0, 7, f"   - CRAE: {hr_results['crae']}  |  CRVE: {hr_results['crve']} (disc-diameter-normalized units)", ln=True)
-        pdf.cell(0, 7, f"   - Scale: Keith-Wagener-Barker Grades 0-3 (Grade 4 out of current scope)", ln=True)
+        pdf.cell(0, 7, _pdf_safe(f"   - Arteriolar-to-Venular Ratio (AVR): {hr_results['avr']}"), ln=True)
+        pdf.cell(0, 7, _pdf_safe(f"   - CRAE: {hr_results['crae']}  |  CRVE: {hr_results['crve']} (disc-diameter-normalized units)"), ln=True)
+        pdf.cell(0, 7, _pdf_safe("   - Scale: Keith-Wagener-Barker Grades 0-3 (Grade 4 out of current scope)"), ln=True)
     else:
-        pdf.cell(0, 7, f"   - Status: {hr_results.get('status', 'unknown').upper()}", ln=True)
-        pdf.multi_cell(0, 6, f"   - {hr_results.get('message', '')}")
+        pdf.cell(0, 7, _pdf_safe(f"   - Status: {hr_results.get('status', 'unknown').upper()}"), ln=True)
+        pdf.multi_cell(0, 6, _pdf_safe(f"   - {hr_results.get('message', '')}"))
     pdf.ln(6)
 
     pdf.set_font("Helvetica", "B", 11)
-    pdf.cell(0, 7, "Official Management Protocol Directives:", ln=True)
+    pdf.cell(0, 7, _pdf_safe("Official Management Protocol Directives:"), ln=True)
     pdf.set_font("Helvetica", "I", 10)
-    hr_directive = HR_CLINICAL_DIRECTIVES.get(hr_results.get("pred_idx"), "N/A — see HR status above.")
-    pdf.multi_cell(0, 5, f"DR: {directive}\nHR: {hr_directive}")
+    hr_directive = HR_CLINICAL_DIRECTIVES.get(hr_results.get("pred_idx"), "N/A - see HR status above.")
+    pdf.multi_cell(0, 5, _pdf_safe(f"DR: {directive}\nHR: {hr_directive}"))
 
     return bytes(pdf.output())
 
