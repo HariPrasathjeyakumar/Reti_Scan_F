@@ -566,17 +566,23 @@ def run_av_segmentation(img_bgr, max_dim=768):
         "vessel": (float(pred_full[..., 2].min()), float(pred_full[..., 2].max()), float(pred_full[..., 2].mean())),
     }
 
-    def _adaptive_threshold(channel):
+    def _adaptive_threshold(channel, min_confidence=0.3):
         """
         A fixed >0.5 cutoff silently produces an all-black mask if the
-        model's real probability spread sits below 0.5 everywhere (very
-        common for thin-structure segmentation with heavy class
-        imbalance). Otsu's method picks a data-driven threshold instead
-        of assuming 0.5 is meaningful for this output distribution.
+        model's real probability spread sits below 0.5 everywhere. Otsu's 
+        method picks a data-driven threshold, but requires a baseline signal 
+        ceiling to prevent stretching background noise into a hallucinated mask.
         """
         ch_min, ch_max = channel.min(), channel.max()
+        
+        # CIRCUIT BREAKER: If the highest raw probability fails to clear the 
+        # absolute floor, the model found no valid vessels.
+        if ch_max < min_confidence:
+            return np.zeros(channel.shape, dtype=np.uint8)
+            
         if ch_max - ch_min < 1e-6:
             return np.zeros(channel.shape, dtype=np.uint8)  # genuinely no signal at all
+            
         scaled = ((channel - ch_min) / (ch_max - ch_min) * 255).astype(np.uint8)
         _, binary = cv2.threshold(scaled, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
         return binary
