@@ -556,10 +556,35 @@ def run_av_segmentation(img_bgr, max_dim=768):
     pred = pred[:h_small, :w_small, :]  # crop off the padding before resizing back up
     pred_full = cv2.resize(pred, (w0, h0))
 
-    artery_mask = (pred_full[..., 0] > 0.5).astype(np.uint8) * 255
-    vein_mask   = (pred_full[..., 1] > 0.5).astype(np.uint8) * 255
-    vessel_mask = (pred_full[..., 2] > 0.5).astype(np.uint8) * 255
-    return artery_mask, vein_mask, vessel_mask
+    # DIAGNOSTIC: raw per-channel stats, surfaced up to the UI so we can
+    # confirm whether the model is outputting a real probability spread
+    # or something degenerate (e.g. everything near 0, which a fixed
+    # >0.5 threshold would silently turn into an all-black mask).
+    debug_stats = {
+        "artery": (float(pred_full[..., 0].min()), float(pred_full[..., 0].max()), float(pred_full[..., 0].mean())),
+        "vein":   (float(pred_full[..., 1].min()), float(pred_full[..., 1].max()), float(pred_full[..., 1].mean())),
+        "vessel": (float(pred_full[..., 2].min()), float(pred_full[..., 2].max()), float(pred_full[..., 2].mean())),
+    }
+
+    def _adaptive_threshold(channel):
+        """
+        A fixed >0.5 cutoff silently produces an all-black mask if the
+        model's real probability spread sits below 0.5 everywhere (very
+        common for thin-structure segmentation with heavy class
+        imbalance). Otsu's method picks a data-driven threshold instead
+        of assuming 0.5 is meaningful for this output distribution.
+        """
+        ch_min, ch_max = channel.min(), channel.max()
+        if ch_max - ch_min < 1e-6:
+            return np.zeros(channel.shape, dtype=np.uint8)  # genuinely no signal at all
+        scaled = ((channel - ch_min) / (ch_max - ch_min) * 255).astype(np.uint8)
+        _, binary = cv2.threshold(scaled, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        return binary
+
+    artery_mask = _adaptive_threshold(pred_full[..., 0])
+    vein_mask   = _adaptive_threshold(pred_full[..., 1])
+    vessel_mask = _adaptive_threshold(pred_full[..., 2])
+    return artery_mask, vein_mask, vessel_mask, debug_stats
 
 
 def detect_optic_disc(img_bgr, fundus_x, fundus_y, fundus_radius):
@@ -708,7 +733,7 @@ def analyze_hypertensive_retinopathy(img_bgr, x_center, y_center, radius):
     of raising and crashing the Streamlit process.
     """
     try:
-        artery_mask, vein_mask, vessel_mask = run_av_segmentation(img_bgr)
+        artery_mask, vein_mask, vessel_mask, debug_stats = run_av_segmentation(img_bgr)
     except Exception as e:
         return {"status": "error", "pred_name": "HR Engine Unavailable",
                 "message": f"Segmentation failed safely: {e}"}
@@ -725,12 +750,14 @@ def analyze_hypertensive_retinopathy(img_bgr, x_center, y_center, radius):
     except Exception as e:
         return {"status": "error", "pred_name": "HR Analysis Failed",
                 "message": f"AVR computation failed safely: {e}",
-                "artery_mask": artery_mask, "vein_mask": vein_mask, "vessel_mask": vessel_mask}
+                "artery_mask": artery_mask, "vein_mask": vein_mask, "vessel_mask": vessel_mask,
+                "debug_stats": debug_stats}
 
     if avr is None:
         return {"status": "indeterminate", "pred_name": "Indeterminate — Insufficient Vascular Signal",
                 "message": "Not enough clearly resolved arteries/veins in the B-zone for a reliable AVR.",
-                "artery_mask": artery_mask, "vein_mask": vein_mask, "vessel_mask": vessel_mask}
+                "artery_mask": artery_mask, "vein_mask": vein_mask, "vessel_mask": vessel_mask,
+                "debug_stats": debug_stats}
 
     if avr >= 0.65:
         idx, name = 0, "Grade 0 (No HR)"
@@ -746,7 +773,8 @@ def analyze_hypertensive_retinopathy(img_bgr, x_center, y_center, radius):
 
     return {"status": "ok", "pred_idx": idx, "pred_name": name, "avr": round(float(avr), 3),
             "crae": round(float(crae), 2), "crve": round(float(crve), 2),
-            "artery_mask": artery_mask, "vein_mask": vein_mask, "vessel_mask": vessel_mask}
+            "artery_mask": artery_mask, "vein_mask": vein_mask, "vessel_mask": vessel_mask,
+            "debug_stats": debug_stats}
 
 # =====================================================================
 #  5. AUXILIARY SCREENING & REPORT GENERATION UTILITIES
@@ -1208,6 +1236,27 @@ if hr_results.get("status") != "ok":
         with m1: st.image(hr_results["artery_mask"], caption="Detected Arteries", use_container_width=True, clamp=True)
         with m2: st.image(hr_results["vein_mask"], caption="Detected Veins", use_container_width=True, clamp=True)
         with m3: st.image(hr_results["vessel_mask"], caption="Vessel Union", use_container_width=True, clamp=True)
+
+    # DIAGNOSTIC PANEL — shows the raw model output range so an all-black
+    # mask can be told apart from "model output real values but they were
+    # thresholded away" vs "model produced no signal at all."
+    if "debug_stats" in hr_results:
+        with st.expander("🔧 HR Diagnostic — raw segmentation output stats"):
+            ds = hr_results["debug_stats"]
+            st.markdown(f"""
+            <div style="font-size:12.5px; color:{TEXT_MUTED}; font-family:monospace; line-height:1.8;">
+                Artery channel — min: {ds['artery'][0]:.4f}, max: {ds['artery'][1]:.4f}, mean: {ds['artery'][2]:.4f}<br>
+                Vein channel &nbsp;— min: {ds['vein'][0]:.4f}, max: {ds['vein'][1]:.4f}, mean: {ds['vein'][2]:.4f}<br>
+                Vessel channel — min: {ds['vessel'][0]:.4f}, max: {ds['vessel'][1]:.4f}, mean: {ds['vessel'][2]:.4f}
+            </div>
+            <p style="font-size:11.5px; color:{TEXT_FAINT}; margin-top:10px;">
+                If max values here are near 0 across all channels, the model itself is producing no signal
+                (likely a weight-loading or preprocessing mismatch, not a thresholding issue).
+                If max values are meaningfully above 0 but masks still look empty, the adaptive
+                threshold should now catch it — if this expander shows non-trivial max values but the
+                masks above are still black, that points to a downstream masking bug, not the model.
+            </p>
+            """, unsafe_allow_html=True)
 else:
     hr_color = HR_SEVERITY_COLOR[hr_results["pred_name"]]
     hr_is_severe = hr_results["pred_idx"] >= 2
