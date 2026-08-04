@@ -13,8 +13,9 @@ import pytz
 from datetime import datetime
 from fpdf import FPDF
 from skimage.filters import frangi  # DR-side vascular topology view only
-from skimage.morphology import skeletonize
+from skimage.morphology import skeletonize, disk
 from scipy.ndimage import distance_transform_edt
+from scipy import ndimage
 
 # ---------------------------------------------------------------------
 # Issue D (insurance, not currently triggered on CPU-only deployments):
@@ -475,24 +476,22 @@ def load_hr_model():
     Loads pretrained RRWNet A/V segmentation weights (Hugging Face).
     Cached once per server process.
 
-    IMPORTANT (Issue F): the git-clone fallback below is a LAST RESORT.
-    Before deploying, vendor the architecture file yourself:
-        1. Locally: git clone --depth 1 https://github.com/j-morano/rrwnet rrwnet_lib
-        2. Commit the rrwnet_lib/ folder (at least model.py) into this repo.
-        3. Push. The block below then finds it locally and skips cloning
-           entirely, removing the runtime dependency on git/GitHub being
-           reachable inside the deployment container.
+    FIXED (Issue #1): the previous runtime `os.system("git clone ...")`
+    fallback has been removed entirely. It would silently break in any
+    containerized/serverless environment without a git binary or network
+    egress at request time. model.py is now vendored directly into this
+    repo at rrwnet_lib/model.py (fetched verbatim from
+    https://github.com/j-morano/rrwnet) — no network dependency, no
+    subprocess call, no fallback needed.
     """
     import torch
 
-    if not os.path.exists(RRWNET_DIR):
-        exit_code = os.system(f"git clone --depth 1 https://github.com/j-morano/rrwnet {RRWNET_DIR} 2>/dev/null")
-        if exit_code != 0 or not os.path.exists(RRWNET_DIR):
-            raise RuntimeError(
-                "rrwnet_lib/ not found and runtime git clone failed. "
-                "This environment likely has no git binary or no network egress. "
-                "Fix: vendor rrwnet_lib/model.py into the repo directly (see docstring)."
-            )
+    if not os.path.exists(os.path.join(RRWNET_DIR, "model.py")):
+        raise RuntimeError(
+            f"{RRWNET_DIR}/model.py not found. This file must be vendored into "
+            "the repository (see rrwnet_lib_model.py delivered alongside this "
+            "app.py) — it is no longer fetched at runtime."
+        )
 
     if RRWNET_DIR not in sys.path:
         sys.path.insert(0, RRWNET_DIR)
@@ -532,34 +531,70 @@ def _pad_to_multiple(img, multiple=32):
     return padded, h, w
 
 
-def _enhance_for_rrwnet(img_bgr):
+def _enhance_for_rrwnet(img_bgr, fundus_x, fundus_y, fundus_radius):
     """
-    CONFIRMED FIX (not a guess): RRWNet's own Hugging Face model card states
-    "Models are trained using enhanced images... preprocess the images
-    offline using the preprocessing.py script in the repo." Feeding raw,
-    un-enhanced images (as this pipeline did previously) puts the model far
-    outside its training distribution, which is why artery/vein channels
-    were producing near-zero confidence everywhere.
-
-    We don't have the exact preprocessing.py script vendored yet, so this
-    is a best-effort approximation using the standard retinal-image
-    enhancement recipe from the vessel-segmentation literature: CLAHE
-    applied in LAB space (L-channel only, so color balance is preserved)
-    plus mild denoising. This should move output out of the near-zero
-    noise floor; for full fidelity to RRWNet's reported benchmarks, vendor
-    their actual preprocessing.py and call it here instead.
+    FIXED (Issue #2): this now faithfully reimplements RRWNet's actual
+    preprocessing.py::enhance_image() function, fetched directly from
+    https://github.com/j-morano/rrwnet, instead of the earlier CLAHE-based
+    guess. The real algorithm is NOT contrast enhancement — it's an
+    illumination-normalization technique:
+      1. Fill the area outside the fundus mask with a 1.15x-zoomed,
+         center-cropped version of the image (avoids black-border
+         artifacts corrupting the blur step below).
+      2. Erode the fundus mask by a small disk (radius 5).
+      3. Estimate the background illumination via a large-sigma
+         (sigma=10) Gaussian blur.
+      4. Subtract that illumination estimate from the image (high-pass
+         filter) — this is the actual "enhancement."
+      5. Normalize by standard deviation, then rescale to [0, 1].
+    Implemented with scipy.ndimage + skimage.morphology.disk, both
+    already project dependencies — no new packages required.
     """
-    lab = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2LAB)
-    l, a, b = cv2.split(lab)
-    clahe = cv2.createCLAHE(clipLimit=2.5, tileGridSize=(8, 8))
-    l_enhanced = clahe.apply(l)
-    lab_enhanced = cv2.merge([l_enhanced, a, b])
-    enhanced = cv2.cvtColor(lab_enhanced, cv2.COLOR_LAB2BGR)
-    denoised = cv2.fastNlMeansDenoisingColored(enhanced, None, 3, 3, 7, 21)
-    return denoised
+    h, w = img_bgr.shape[:2]
+    img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB).astype(np.float64) / 255.0
+
+    fov_mask = np.zeros((h, w), dtype=np.uint8)
+    cv2.circle(fov_mask, (int(fundus_x), int(fundus_y)), max(int(fundus_radius), 1), 1, -1)
+
+    img_copy = img_rgb.copy()
+
+    zoomed = cv2.resize(img_rgb, (max(int(w * 1.15), 1), max(int(h * 1.15), 1)),
+                         interpolation=cv2.INTER_CUBIC)
+    zh, zw = zoomed.shape[:2]
+    start_y, start_x = max(zh // 2 - h // 2, 0), max(zw // 2 - w // 2, 0)
+    zoomed = zoomed[start_y:start_y + h, start_x:start_x + w]
+    if zoomed.shape[:2] != (h, w):  # safety pad in case of off-by-one rounding
+        zoomed = cv2.resize(zoomed, (w, h), interpolation=cv2.INTER_CUBIC)
+
+    eroded_mask = ndimage.binary_erosion(fov_mask.astype(bool), disk(5)).astype(np.float64)
+
+    img_copy[eroded_mask < 1.0] = 0.0
+    mask_3ch = np.stack([eroded_mask] * 3, axis=2)
+    composed = mask_3ch.copy()
+    composed[mask_3ch == 1.0] = img_copy[mask_3ch == 1.0]
+    composed[mask_3ch < 1.0] = zoomed[mask_3ch < 1.0]
+
+    filtered = ndimage.gaussian_filter(composed, sigma=(10, 10, 0))
+    subtracted = composed - filtered
+    subtracted[mask_3ch < 1.0] = 0.0
+
+    std = np.std(subtracted)
+    if std < 1e-8:
+        std = 1e-8
+    enhanced = subtracted / std
+
+    e_min, e_max = enhanced.min(), enhanced.max()
+    if e_max - e_min < 1e-8:
+        enhanced = np.zeros_like(enhanced)
+    else:
+        enhanced = (enhanced - e_min) / (e_max - e_min)
+    enhanced[mask_3ch < 1.0] = 0.0
+
+    enhanced_uint8 = (enhanced * 255).astype(np.uint8)
+    return cv2.cvtColor(enhanced_uint8, cv2.COLOR_RGB2BGR)
 
 
-def run_av_segmentation(img_bgr, max_dim=768):
+def run_av_segmentation(img_bgr, fundus_x, fundus_y, fundus_radius, max_dim=768):
     """Runs A/V segmentation. Image is downscaled first to cap memory use."""
     import torch
 
@@ -568,10 +603,10 @@ def run_av_segmentation(img_bgr, max_dim=768):
     scale = min(1.0, max_dim / max(h0, w0))
     img_small = cv2.resize(img_bgr, (int(w0 * scale), int(h0 * scale))) if scale < 1.0 else img_bgr.copy()
 
-    # Apply the enhancement RRWNet's own documentation confirms is required
-    # before this scale/pad step, so padding doesn't get computed on top of
-    # a subsequently-transformed image size.
-    img_small = _enhance_for_rrwnet(img_small)
+    # CRITICAL FIX #2: apply RRWNet's actual documented-required enhancement
+    # (faithfully reimplemented above), using fundus geometry scaled to
+    # match the downscaled working image.
+    img_small = _enhance_for_rrwnet(img_small, fundus_x * scale, fundus_y * scale, fundus_radius * scale)
 
     # Pad to a multiple of 32 so encoder/decoder feature maps align exactly
     img_padded, h_small, w_small = _pad_to_multiple(img_small, multiple=32)
@@ -666,6 +701,46 @@ def detect_optic_disc(img_bgr, fundus_x, fundus_y, fundus_radius):
     blurred = cv2.GaussianBlur(masked, (25, 25), 0)
     _, _, _, max_loc = cv2.minMaxLoc(blurred)
     return max_loc[0], max_loc[1], expected_disc_r
+
+
+def detect_papilledema_signs(img_bgr, disc_x, disc_y, disc_r, fundus_radius):
+    """
+    Issue #3 fix: a concrete, feasible screening signal for papilledema
+    (optic disc swelling) — the finding required for KWB Grade 4 that AVR
+    alone structurally cannot detect. This does NOT require a new trained
+    model. It checks two independent proxy signals and only flags when
+    BOTH agree, to keep the false-positive rate down:
+
+      1. Disc area substantially larger than the expected disc:fundus
+         ratio — swollen discs measure larger than normal.
+      2. A blurred/indistinct disc margin — edge gradient magnitude
+         around the boundary is abnormally low compared to a sharp,
+         healthy disc edge.
+
+    This is an unvalidated heuristic screening flag, not a diagnosis —
+    treated as such throughout (labeled "Suspected" everywhere it
+    appears, and listed explicitly in the Model Card's limitations).
+    """
+    expected_r = fundus_radius * 0.12
+    area_ratio = (disc_r / expected_r) if expected_r > 0 else 1.0
+    area_flag = area_ratio > 1.35  # disc measuring >35% larger than the expected ratio
+
+    gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
+    ring_mask = np.zeros(gray.shape, dtype=np.uint8)
+    cv2.circle(ring_mask, (int(disc_x), int(disc_y)), int(disc_r * 1.15), 255, 3)
+    cv2.circle(ring_mask, (int(disc_x), int(disc_y)), int(disc_r * 0.85), 0, -1)
+    sobel_x = cv2.Sobel(gray, cv2.CV_64F, 1, 0, ksize=3)
+    sobel_y = cv2.Sobel(gray, cv2.CV_64F, 0, 1, ksize=3)
+    grad_mag = np.sqrt(sobel_x ** 2 + sobel_y ** 2)
+    ring_pixels = grad_mag[ring_mask > 0]
+    margin_sharpness = float(np.mean(ring_pixels)) if ring_pixels.size > 0 else 0.0
+    margin_flag = margin_sharpness < 12.0  # empirical, unvalidated low-gradient threshold
+
+    return {
+        "suspected": bool(area_flag and margin_flag),
+        "area_ratio": round(float(area_ratio), 2),
+        "margin_sharpness": round(margin_sharpness, 2),
+    }
 
 
 def compute_b_zone_mask(h, w, disc_x, disc_y, disc_radius):
@@ -765,7 +840,7 @@ def analyze_hypertensive_retinopathy(img_bgr, x_center, y_center, radius):
     of raising and crashing the Streamlit process.
     """
     try:
-        artery_mask, vein_mask, vessel_mask, debug_stats = run_av_segmentation(img_bgr)
+        artery_mask, vein_mask, vessel_mask, debug_stats = run_av_segmentation(img_bgr, x_center, y_center, radius)
     except Exception as e:
         return {"status": "error", "pred_name": "HR Engine Unavailable",
                 "message": f"Segmentation failed safely: {e}"}
