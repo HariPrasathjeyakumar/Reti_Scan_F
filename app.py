@@ -66,10 +66,11 @@ SEVERITY_COLOR = {
 }
 
 HR_SEVERITY_COLOR = {
-    "Grade 0 (No HR)":       EMERALD,
-    "Grade 1 (Mild HR)":     WARN,
-    "Grade 2 (Moderate HR)": INFO,
-    "Grade 3 (Severe HR)":   DANGER,
+    "Grade 0 (No HR)":                  EMERALD,
+    "Grade 1 (Mild HR)":                WARN,
+    "Grade 2 (Moderate HR)":            INFO,
+    "Grade 3 (Severe HR)":              DANGER,
+    "Grade 4 (Suspected Malignant HR)": DANGER,
 }
 
 st.markdown(f"""
@@ -295,14 +296,16 @@ CLINICAL_DIRECTIVES = {
 
 REFERABLE_CLASSES = {2, 3, 4}
 
-# --- HR Metadata (Keith-Wagener-Barker Scale, Grades 0-3 reachable via AVR) ---
-# Grade 4 (malignant HR / papilledema) is NOT derivable from AVR alone and is
-# explicitly out of scope until a disc-swelling detector is added.
+# --- HR Metadata (Keith-Wagener-Barker Scale, Grades 0-4) ---
+# Grade 4 is flagged via a papilledema screening heuristic (disc area +
+# margin sharpness), NOT a validated diagnostic method — always labeled
+# "Suspected" to keep this honest. See detect_papilledema_signs().
 HR_CLASS_NAMES = {
     0: "Grade 0 (No HR)",
     1: "Grade 1 (Mild HR)",
     2: "Grade 2 (Moderate HR)",
     3: "Grade 3 (Severe HR)",
+    4: "Grade 4 (Suspected Malignant HR)",
 }
 
 HR_CLASS_DESCRIPTIONS = {
@@ -310,6 +313,7 @@ HR_CLASS_DESCRIPTIONS = {
     1: "Mild generalized retinal arteriolar narrowing (reduced AVR). Early vascular response to systemic hypertension.",
     2: "Marked arteriolar attenuation consistent with focal narrowing and/or AV nicking at vascular crossings.",
     3: "Severely reduced AVR consistent with significant microvascular injury. Correlate clinically for hemorrhages, cotton-wool spots, and hard exudates.",
+    4: "Severely reduced AVR combined with signs suggestive of optic disc swelling (enlarged, blurred-margin disc) — a screening flag for possible papilledema, not a confirmed finding.",
 }
 
 HR_CLINICAL_DIRECTIVES = {
@@ -317,22 +321,24 @@ HR_CLINICAL_DIRECTIVES = {
     1: "Advise primary care physician (PCP) for baseline 24-hour ambulatory blood pressure monitoring (ABPM). Re-evaluate fundus in 12 months.",
     2: "Refer to primary care/cardiology for optimized antihypertensive regimen adjustment. Recheck retinal microvasculature in 3-6 months.",
     3: "URGENT SYSTEMIC EVALUATION REQUIRED: Contact managing physician within 24-48 hours. Target gradual blood pressure reduction.",
+    4: "CRITICAL SCREENING FLAG: Signs suggestive of papilledema detected alongside severe AVR reduction. Recommend immediate clinical correlation and same-day physician evaluation — this is a heuristic flag requiring confirmation, not a standalone diagnosis.",
 }
 
 MODEL_CARD = {
-    "architecture": "DR: EfficientNetB3 (ImageNet backbone). HR: RRWNet (pretrained artery/vein segmentation, Morano et al. 2024) + clinical Knudtson-Parr-Hubbard AVR computation on disc-diameter-normalized vessel widths.",
+    "architecture": "DR: EfficientNetB3 (ImageNet backbone). HR: RRWNet (pretrained artery/vein segmentation, Morano et al. 2024) + clinical Knudtson-Parr-Hubbard AVR computation on disc-diameter-normalized vessel widths, plus a heuristic papilledema screening check for Grade 4.",
     "input_resolution": f"DR: {IMG_SIZE} x {IMG_SIZE} RGB. HR: native resolution, downscaled to max 768px for inference; vessel widths normalized to % of optic-disc-diameter before AVR computation to remove resolution dependence.",
     "training_dataset": "DR: APTOS 2019 Blindness Detection dataset. HR: RRWNet pretrained on RITE/LES-AV/HRF (not retrained by this project).",
-    "num_classes": "DR: 5-class ICDR. HR: Grades 0-3 of the Keith-Wagener-Barker scale (Grade 4 out of scope, see limitations).",
+    "num_classes": "DR: 5-class ICDR. HR: Grades 0-4 of the Keith-Wagener-Barker scale (Grade 4 is a heuristic screening flag, see limitations).",
     "loss_function": "DR: Categorical Crossentropy / Focal Loss.",
-    "reported_accuracy": "DR: ~89% top-1 accuracy on validation split. HR: inherits RRWNet's published segmentation benchmarks; AVR-to-grade mapping is rule-based and not independently validated by this project on labeled KWB data yet.",
+    "reported_accuracy": "DR: ~89% top-1 accuracy on validation split. HR: inherits RRWNet's published segmentation benchmarks; AVR-to-grade mapping and the Grade 4 papilledema heuristic are rule-based and not independently validated by this project on labeled clinical data yet.",
     "explainability_method": "DR: Grad-CAM, quadrant-mapped. HR: artery/vein segmentation masks with branch-split vessel measurement + numeric AVR/CRAE/CRVE via the clinically standard B-zone + Knudtson formula.",
     "uncertainty_method": "DR: Test-Time Augmentation (TTA) ensemble variance across 3 views. HR: explicit 'indeterminate' abstain state when fewer than 2 reliable vessel segments are resolved in the B-zone — no forced grade on weak signal.",
     "known_limitations": [
-        "HR Grade 4 (malignant HR / papilledema) is not derivable from AVR alone and is currently unreachable — flagged, not silently mis-graded.",
+        "HR Grade 4 is produced by an unvalidated heuristic (disc area ratio + margin gradient sharpness), not a trained papilledema detector — always shown as 'Suspected' and requires clinical confirmation.",
         "Optic disc localization uses a brightness + circularity heuristic; extreme exudate/glare cases can still occasionally mislocalize the disc.",
-        "HR inference applies a best-effort CLAHE-based enhancement approximating RRWNet's documented required preprocessing, not the exact original preprocessing.py script from the authors' repo — full benchmark-level accuracy is not yet confirmed.",
+        "HR inference now reimplements RRWNet's actual published preprocessing.py enhancement algorithm (illumination background-subtraction), not an approximation — but exact numerical parity with the authors' PIL/skimage pipeline is not guaranteed.",
         "The AVR-to-KWB-grade cutoffs used here are literature-informed thresholds, not independently calibrated against a labeled KWB dataset by this project.",
+        "Patient history is stored in local SQLite on the deployment container's filesystem and will not persist across container restarts/redeploys — acceptable for this development stage, flagged as a known constraint rather than solved.",
         "DR predictions rely strictly on original EfficientNet preprocessing to maintain baseline accuracy.",
         "Not a standalone diagnostic tool. Intended as a dual-screening decision-support triage aid."
     ],
@@ -874,14 +880,27 @@ def analyze_hypertensive_retinopathy(img_bgr, x_center, y_center, radius):
         idx, name = 2, "Grade 2 (Moderate HR)"
     else:
         idx, name = 3, "Grade 3 (Severe HR)"
-    # Grade 4 (malignant) requires papilledema detection, not derivable from
-    # AVR alone — explicit scope limitation until a disc-swelling detector
-    # is added (see Model Card).
 
-    return {"status": "ok", "pred_idx": idx, "pred_name": name, "avr": round(float(avr), 3),
-            "crae": round(float(crae), 2), "crve": round(float(crve), 2),
-            "artery_mask": artery_mask, "vein_mask": vein_mask, "vessel_mask": vessel_mask,
-            "debug_stats": debug_stats}
+    papilledema_signs = None
+    if idx == 3:
+        # Only check for papilledema signs at the Severe tier — this is
+        # where a Grade 4 escalation is clinically plausible. Both the
+        # area and margin-sharpness signals must agree (see
+        # detect_papilledema_signs) before upgrading the grade.
+        try:
+            papilledema_signs = detect_papilledema_signs(img_bgr, disc_x, disc_y, disc_r, radius)
+            if papilledema_signs["suspected"]:
+                idx, name = 4, "Grade 4 (Suspected Malignant HR)"
+        except Exception:
+            papilledema_signs = None  # fail soft — stays at Grade 3 if this check errors
+
+    result = {"status": "ok", "pred_idx": idx, "pred_name": name, "avr": round(float(avr), 3),
+              "crae": round(float(crae), 2), "crve": round(float(crve), 2),
+              "artery_mask": artery_mask, "vein_mask": vein_mask, "vessel_mask": vessel_mask,
+              "debug_stats": debug_stats}
+    if papilledema_signs is not None:
+        result["papilledema_signs"] = papilledema_signs
+    return result
 
 # =====================================================================
 #  5. AUXILIARY SCREENING & REPORT GENERATION UTILITIES
