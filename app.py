@@ -39,29 +39,29 @@ st.set_page_config(
 )
 
 # =====================================================================
-#  0. DESIGN TOKENS
+#  0. DESIGN TOKENS — clean, minimal, professional (icon-free)
 # =====================================================================
-BG           = "#0d0e12"
-SURFACE      = "#16171d"
-SURFACE_ALT  = "#1d1f27"
-RAISED       = "#24262f"
-BORDER       = "#2c2e38"
-TEXT_MAIN    = "#f3f2ee"
-TEXT_MUTED   = "#96979f"
-TEXT_FAINT   = "#5f606a"
-ACCENT       = "#ff8a3d"
-ACCENT_DEEP  = "#e56f22"
-EMERALD      = "#33c793"
-INFO         = "#5eb1ef"
-WARN         = "#f2b134"
-DANGER       = "#f2545b"
-SUCCESS      = "#33c793"
+BG           = "#ffffff"
+SURFACE      = "#ffffff"
+SURFACE_ALT  = "#f6f6f7"
+RAISED       = "#f0f0f2"
+BORDER       = "#e1e1e4"
+TEXT_MAIN    = "#111114"
+TEXT_MUTED   = "#68686d"
+TEXT_FAINT   = "#98989d"
+ACCENT       = "#2c5254"
+ACCENT_DEEP  = "#1c3839"
+EMERALD      = "#2c7a54"
+INFO         = "#37628f"
+WARN         = "#93641c"
+DANGER       = "#9c3b3b"
+SUCCESS      = "#2c7a54"
 
 SEVERITY_COLOR = {
     "No DR":            EMERALD,
     "Mild NPDR":         WARN,
     "Moderate NPDR":     INFO,
-    "Severe NPDR":       "#ef8b3f",
+    "Severe NPDR":       "#a15a26",
     "Proliferative DR":  DANGER,
 }
 
@@ -83,174 +83,174 @@ st.markdown(f"""
     }}
     [data-testid="stHeader"] {{ background-color: transparent !important; }}
     [data-testid="stSidebar"] {{ display: none !important; }}
-    .block-container {{ padding-top: 0.5rem; padding-bottom: 4rem; max-width: 1180px; }}
+    .block-container {{ padding-top: 1.5rem; padding-bottom: 4rem; max-width: 1080px; }}
 
     /* ============ Inputs ============ */
     .stTextInput input {{
-        background-color: {SURFACE_ALT} !important;
+        background-color: {SURFACE} !important;
         border: 1px solid {BORDER} !important;
-        border-radius: 10px !important;
+        border-radius: 4px !important;
         color: {TEXT_MAIN} !important;
-        font-weight: 600 !important;
+        font-weight: 500 !important;
     }}
     .stTextInput input:focus {{
         border-color: {ACCENT} !important;
-        box-shadow: 0 0 0 1px {ACCENT} !important;
+        box-shadow: none !important;
     }}
-    label {{ color: {TEXT_MUTED} !important; font-size: 11.5px !important; font-weight: 700 !important;
-             text-transform: uppercase; letter-spacing: 0.6px; }}
+    label {{ color: {TEXT_MUTED} !important; font-size: 11px !important; font-weight: 600 !important;
+             text-transform: uppercase; letter-spacing: 0.5px; }}
 
     /* ============ Uploader ============ */
     [data-testid="stFileUploaderDropzone"] {{
         background-color: {SURFACE_ALT} !important;
-        border: 1.5px dashed {BORDER} !important;
-        border-radius: 12px !important;
+        border: 1px dashed {BORDER} !important;
+        border-radius: 4px !important;
     }}
-    [data-testid="stFileUploaderDropzone"] * {{ color: #e8f6fa !important; }}
+    [data-testid="stFileUploaderDropzone"] * {{ color: {TEXT_MUTED} !important; }}
     [data-testid="stFileUploaderDropzone"] button,
     section[data-testid="stFileUploader"] button {{
-        background-color: {ACCENT} !important;
-        color: #201200 !important;
+        background-color: {TEXT_MAIN} !important;
+        color: {SURFACE} !important;
         border: none !important;
-        border-radius: 8px !important;
-        font-weight: 700 !important;
+        border-radius: 4px !important;
+        font-weight: 600 !important;
+        box-shadow: none !important;
     }}
     [data-testid="stFileUploaderFile"] {{
         background-color: {RAISED} !important;
-        border-radius: 8px !important;
+        border-radius: 4px !important;
         border: 1px solid {BORDER} !important;
     }}
 
     /* ============ Buttons ============ */
     .stButton button, .stDownloadButton button {{
-        background-color: {ACCENT} !important;
-        color: #201200 !important;
+        background-color: {TEXT_MAIN} !important;
+        color: {SURFACE} !important;
         border: none !important;
-        border-radius: 10px !important;
-        font-weight: 800 !important;
-        padding: 12px 18px !important;
-        box-shadow: 0 4px 16px rgba(255, 138, 61, 0.28);
-        transition: transform 0.12s ease, box-shadow 0.12s ease;
+        border-radius: 4px !important;
+        font-weight: 600 !important;
+        padding: 10px 16px !important;
+        box-shadow: none !important;
+        transition: opacity 0.12s ease;
     }}
     .stButton button:hover, .stDownloadButton button:hover {{
-        transform: translateY(-1px);
-        box-shadow: 0 6px 20px rgba(255, 138, 61, 0.4);
+        opacity: 0.82;
     }}
-    .stDownloadButton button p {{ color: #201200 !important; font-weight: 800 !important; }}
+    .stDownloadButton button p {{ color: {SURFACE} !important; font-weight: 600 !important; }}
+
+    /* Secondary / outline button variant, used for the experimental HR trigger */
+    .rs-btn-outline .stButton button {{
+        background-color: {SURFACE} !important;
+        color: {TEXT_MAIN} !important;
+        border: 1px solid {TEXT_MAIN} !important;
+    }}
+    .rs-btn-outline .stButton button:hover {{ opacity: 1; background-color: {SURFACE_ALT} !important; }}
 
     /* ============ Radio Segmented Control ============ */
     div[role="radiogroup"] {{
-        display: flex; gap: 6px; background: {SURFACE_ALT};
-        padding: 5px; border-radius: 12px; border: 1px solid {BORDER};
+        display: flex; gap: 4px; background: {SURFACE_ALT};
+        padding: 4px; border-radius: 4px; border: 1px solid {BORDER};
         width: fit-content;
     }}
     div[role="radiogroup"] label {{
-        background: transparent; border-radius: 9px; padding: 8px 16px !important;
-        margin: 0 !important; color: {TEXT_MUTED} !important; font-weight: 700 !important;
-        text-transform: none !important; letter-spacing: 0 !important; font-size: 13px !important;
+        background: transparent; border-radius: 3px; padding: 7px 14px !important;
+        margin: 0 !important; color: {TEXT_MUTED} !important; font-weight: 600 !important;
+        text-transform: none !important; letter-spacing: 0 !important; font-size: 12.5px !important;
         cursor: pointer;
     }}
     div[role="radiogroup"] label[data-checked="true"],
-    div[role="radiogroup"] input:checked + div {{ color: {ACCENT} !important; }}
+    div[role="radiogroup"] input:checked + div {{ color: {TEXT_MAIN} !important; }}
     div[role="radiogroup"] > label > div:first-child {{ display: none; }}
 
     /* ============ Expander ============ */
     .stExpander {{
         background-color: {SURFACE} !important;
         border: 1px solid {BORDER} !important;
-        border-radius: 14px;
+        border-radius: 4px;
     }}
-    .stExpander summary {{ color: {TEXT_MAIN} !important; font-weight: 700 !important; }}
+    .stExpander summary {{ color: {TEXT_MAIN} !important; font-weight: 600 !important; }}
 
     /* ============ Misc ============ */
     hr {{ border-color: {BORDER} !important; }}
     ::-webkit-scrollbar {{ width: 8px; height: 8px; }}
-    ::-webkit-scrollbar-thumb {{ background-color: {BORDER}; border-radius: 8px; }}
+    ::-webkit-scrollbar-thumb {{ background-color: {BORDER}; border-radius: 4px; }}
 
     /* ============ Custom Layout Elements ============ */
-    .rs-hero {{
-        display: flex; align-items: center; gap: 16px;
-        padding: 26px 0 22px 0;
+    .rs-header {{
+        padding: 6px 0 28px 0; border-bottom: 1px solid {BORDER}; margin-bottom: 30px;
     }}
-    .rs-hero-mark {{
-        width: 52px; height: 52px; border-radius: 16px; flex-shrink: 0;
-        background: linear-gradient(145deg, {ACCENT}, {ACCENT_DEEP});
-        display: flex; align-items: center; justify-content: center; font-size: 26px;
-        box-shadow: 0 6px 20px rgba(255, 138, 61, 0.3);
-    }}
-    .rs-hero-title {{ font-size: 27px; font-weight: 800; letter-spacing: -0.3px; line-height: 1.15; }}
-    .rs-hero-sub {{ color: {TEXT_MUTED}; font-size: 13px; margin-top: 3px; }}
+    .rs-header-title {{ font-size: 22px; font-weight: 700; letter-spacing: -0.2px; color: {TEXT_MAIN}; }}
+    .rs-header-sub {{ color: {TEXT_MUTED}; font-size: 12.5px; margin-top: 4px; }}
 
     .rs-toolbar {{
-        background: {SURFACE}; border: 1px solid {BORDER}; border-radius: 16px;
-        padding: 18px 22px; margin-bottom: 26px;
+        background: {SURFACE_ALT}; border: 1px solid {BORDER}; border-radius: 4px;
+        padding: 18px 20px; margin-bottom: 30px;
     }}
     .rs-toolbar-label {{
         color: {TEXT_FAINT}; font-size: 10.5px; text-transform: uppercase;
-        letter-spacing: 0.8px; font-weight: 800; margin-bottom: 8px;
+        letter-spacing: 0.6px; font-weight: 700; margin-bottom: 8px;
     }}
 
-    .rs-divider-label {{
-        color: {TEXT_MAIN}; font-size: 12.5px; text-transform: uppercase;
-        letter-spacing: 1px; font-weight: 800; margin: 30px 0 16px 0;
-        display: flex; align-items: center; gap: 10px;
-    }}
-    .rs-divider-label::after {{
-        content: ""; flex: 1; height: 1px; background: {BORDER};
+    .rs-section-label {{
+        color: {TEXT_MAIN}; font-size: 11px; text-transform: uppercase;
+        letter-spacing: 1px; font-weight: 700; margin: 34px 0 16px 0;
+        padding-bottom: 8px; border-bottom: 1px solid {BORDER};
     }}
 
-    .rs-verdict-hero {{
-        border-radius: 20px; padding: 32px 34px; margin-bottom: 8px;
-        position: relative; overflow: hidden; border: 1px solid {BORDER};
+    .rs-card {{
+        border: 1px solid {BORDER}; border-radius: 4px; padding: 26px 28px; margin-bottom: 8px;
     }}
-    .rs-pill {{
-        display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700;
-        padding: 6px 13px; border-radius: 100px; border: 1px solid; margin-right: 8px;
+    .rs-badge {{
+        display: inline-block; font-size: 11px; font-weight: 700;
+        padding: 5px 11px; border-radius: 3px; border: 1px solid; margin-right: 8px;
+        text-transform: uppercase; letter-spacing: 0.4px;
     }}
-    .rs-stat-strip {{ display: flex; gap: 28px; flex-wrap: wrap; margin-top: 18px; }}
+    .rs-stat-strip {{ display: flex; gap: 32px; flex-wrap: wrap; margin-top: 20px; }}
     .rs-stat {{ display: flex; flex-direction: column; }}
-    .rs-stat-label {{ color: {TEXT_MUTED}; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.6px; font-weight: 700; }}
-    .rs-stat-value {{ font-size: 19px; font-weight: 800; margin-top: 2px; }}
+    .rs-stat-label {{ color: {TEXT_MUTED}; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; }}
+    .rs-stat-value {{ font-size: 18px; font-weight: 700; margin-top: 3px; color: {TEXT_MAIN}; }}
 
-    .rs-rail {{ border-left: 3px solid {BORDER}; padding-left: 18px; margin-bottom: 22px; }}
-    .rs-rail-accent {{ border-left: 3px solid {ACCENT}; padding-left: 18px; margin-bottom: 22px; }}
-    .rs-rail-warn {{ border-left: 3px solid {WARN}; padding-left: 18px; margin-bottom: 22px; }}
-    .rs-rail-title {{ font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.8px; font-weight: 800; margin-bottom: 8px; }}
-    .rs-rail-body {{ font-size: 13.5px; line-height: 1.65; color: {TEXT_MAIN}; }}
+    .rs-rail {{ border-left: 2px solid {BORDER}; padding-left: 16px; margin-bottom: 20px; }}
+    .rs-rail-accent {{ border-left: 2px solid {TEXT_MAIN}; padding-left: 16px; margin-bottom: 20px; }}
+    .rs-rail-warn {{ border-left: 2px solid {WARN}; padding-left: 16px; margin-bottom: 20px; }}
+    .rs-rail-title {{ font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.6px; font-weight: 700; margin-bottom: 7px; color: {TEXT_MUTED}; }}
+    .rs-rail-body {{ font-size: 13px; line-height: 1.6; color: {TEXT_MAIN}; }}
 
-    .rs-prob-row {{ display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 5px; }}
+    .rs-prob-row {{ display: flex; justify-content: space-between; font-size: 12.5px; margin-bottom: 4px; }}
 
     .rs-bar-track {{
-        width: 100%; height: 8px; border-radius: 6px;
+        width: 100%; height: 5px; border-radius: 3px;
         background: {SURFACE_ALT}; border: 1px solid {BORDER};
-        overflow: hidden; margin-bottom: 14px;
+        overflow: hidden; margin-bottom: 13px;
     }}
-    .rs-bar-fill {{
-        height: 100%; border-radius: 6px;
-        background: linear-gradient(90deg, {ACCENT}, {ACCENT_DEEP});
-    }}
-    .rs-bar-fill-muted {{
-        height: 100%; border-radius: 6px;
-        background: linear-gradient(90deg, {TEXT_FAINT}, {BORDER});
-    }}
+    .rs-bar-fill {{ height: 100%; background: {TEXT_MAIN}; }}
+    .rs-bar-fill-muted {{ height: 100%; background: {TEXT_FAINT}; }}
 
     .rs-reject {{
-        background: {SURFACE}; border-left: 4px solid {DANGER}; border-radius: 10px;
-        padding: 18px 22px; color: {TEXT_MAIN};
+        background: {SURFACE}; border-left: 2px solid {DANGER}; border-radius: 4px;
+        padding: 18px 20px; color: {TEXT_MAIN}; border-top: 1px solid {BORDER};
+        border-right: 1px solid {BORDER}; border-bottom: 1px solid {BORDER};
     }}
 
     .rs-warn-box {{
-        background: {SURFACE}; border-left: 4px solid {WARN}; border-radius: 10px;
-        padding: 16px 20px; color: {TEXT_MAIN};
+        background: {SURFACE}; border-left: 2px solid {WARN}; border-radius: 4px;
+        padding: 16px 20px; color: {TEXT_MAIN}; border-top: 1px solid {BORDER};
+        border-right: 1px solid {BORDER}; border-bottom: 1px solid {BORDER};
     }}
 
-    .rs-timeline-chip {{
-        display: inline-flex; flex-direction: column; gap: 2px;
-        background: {SURFACE_ALT}; border: 1px solid {BORDER}; border-radius: 12px;
-        padding: 10px 16px; margin-right: 10px; margin-bottom: 10px; min-width: 140px;
+    .rs-experimental-tag {{
+        display: inline-block; font-size: 10px; font-weight: 700; text-transform: uppercase;
+        letter-spacing: 0.6px; color: {WARN}; border: 1px solid {WARN}; border-radius: 3px;
+        padding: 2px 7px; margin-left: 10px; vertical-align: middle;
+    }}
+
+    .rs-timeline-row {{
+        display: flex; justify-content: space-between; align-items: center;
+        padding: 12px 0; border-bottom: 1px solid {BORDER}; font-size: 12.5px;
     }}
     </style>
 """, unsafe_allow_html=True)
+
 
 # =====================================================================
 #  1. CONSTANTS, CLOUD PATHS, & METADATA
