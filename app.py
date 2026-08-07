@@ -200,7 +200,7 @@ st.markdown(f"""
         background: linear-gradient(135deg, {SURFACE}, {SURFACE_ALT});
         margin-bottom: 28px; box-shadow: 0 8px 24px rgba(0,0,0,0.2);
     }}
-    .rs-hero-title {{ font-size: 32px; font-weight: 800;align: center; letter-spacing: -0.5px; color: {TEXT_MAIN}; }}
+    .rs-hero-title {{ font-size: 32px; font-weight: 800; letter-spacing: -0.5px; color: {TEXT_MAIN}; }}
     .rs-hero-sub {{ color: {TEXT_MUTED}; font-size: 13px; margin-top: 4px; }}
     .rs-hero-tag {{
         font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px;
