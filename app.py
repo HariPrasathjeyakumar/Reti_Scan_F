@@ -32,7 +32,7 @@ for _gpu in _gpus:
 
 # Set page configurations — wide canvas, no sidebar
 st.set_page_config(
-    page_title="RetiScan Procgvkjh,b",
+    page_title="RetiScan Pro",
     page_icon=None,
     layout="wide",
     initial_sidebar_state="collapsed"
@@ -1190,7 +1190,7 @@ def compute_diagnostic_graphs(img_tensor, grad_model_obj, pred_idx, img_bgr, x_c
 st.markdown(f"""
 <div class="rs-hero">
     <div>
-        <div class="rs-hero-title">RetiScan Pro <span style="color:{ACCENT};">v5</span></div>
+        <div class="rs-hero-title">RETISCAN<span style="color:{ACCENT};"></span></div>
         <div class="rs-hero-sub">AI-assisted diabetic retinopathy grading, with an experimental hypertensive retinopathy screen</div>
     </div>
     <div class="rs-hero-tag">Decision-support tool</div>
