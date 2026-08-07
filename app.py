@@ -33,13 +33,13 @@ for _gpu in _gpus:
 # Set page configurations — wide canvas, no sidebar
 st.set_page_config(
     page_title="RetiScan Pro v5",
-    page_icon="🩺",
+    page_icon=None,
     layout="wide",
     initial_sidebar_state="collapsed"
 )
 
 # =====================================================================
-#  0. DESIGN TOKENS — clean, minimal, professional (icon-free)
+#  0. DESIGN TOKENS — clean, minimal, professional, icon-free
 # =====================================================================
 BG           = "#ffffff"
 SURFACE      = "#ffffff"
@@ -56,6 +56,7 @@ INFO         = "#37628f"
 WARN         = "#93641c"
 DANGER       = "#9c3b3b"
 SUCCESS      = "#2c7a54"
+NEUTRAL_TAG  = "#5b5b60"
 
 SEVERITY_COLOR = {
     "No DR":            EMERALD,
@@ -83,7 +84,7 @@ st.markdown(f"""
     }}
     [data-testid="stHeader"] {{ background-color: transparent !important; }}
     [data-testid="stSidebar"] {{ display: none !important; }}
-    .block-container {{ padding-top: 1.5rem; padding-bottom: 4rem; max-width: 1080px; }}
+    .block-container {{ padding-top: 2.2rem; padding-bottom: 4rem; max-width: 1080px; }}
 
     /* ============ Inputs ============ */
     .stTextInput input {{
@@ -138,7 +139,7 @@ st.markdown(f"""
     }}
     .stDownloadButton button p {{ color: {SURFACE} !important; font-weight: 600 !important; }}
 
-    /* Secondary / outline button variant, used for the experimental HR trigger */
+    /* Outline button variant — used for the experimental HR trigger */
     .rs-btn-outline .stButton button {{
         background-color: {SURFACE} !important;
         color: {TEXT_MAIN} !important;
@@ -175,35 +176,56 @@ st.markdown(f"""
     ::-webkit-scrollbar {{ width: 8px; height: 8px; }}
     ::-webkit-scrollbar-thumb {{ background-color: {BORDER}; border-radius: 4px; }}
 
-    /* ============ Custom Layout Elements ============ */
-    .rs-header {{
-        padding: 6px 0 28px 0; border-bottom: 1px solid {BORDER}; margin-bottom: 30px;
+    /* ============ Layout: header ============ */
+    .rs-hero {{
+        display: flex; align-items: baseline; justify-content: space-between;
+        padding: 0 0 22px 0; border-bottom: 1px solid {BORDER}; margin-bottom: 28px;
     }}
-    .rs-header-title {{ font-size: 22px; font-weight: 700; letter-spacing: -0.2px; color: {TEXT_MAIN}; }}
-    .rs-header-sub {{ color: {TEXT_MUTED}; font-size: 12.5px; margin-top: 4px; }}
+    .rs-hero-title {{ font-size: 24px; font-weight: 800; letter-spacing: -0.3px; color: {TEXT_MAIN}; }}
+    .rs-hero-sub {{ color: {TEXT_MUTED}; font-size: 12.5px; margin-top: 5px; }}
+    .rs-hero-tag {{
+        font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px;
+        color: {TEXT_MUTED}; border: 1px solid {BORDER}; border-radius: 3px; padding: 5px 10px;
+    }}
 
+    /* ============ Layout: toolbar ============ */
     .rs-toolbar {{
-        background: {SURFACE_ALT}; border: 1px solid {BORDER}; border-radius: 4px;
-        padding: 18px 20px; margin-bottom: 30px;
+        background: {SURFACE_ALT}; border: 1px solid {BORDER}; border-radius: 6px;
+        padding: 20px 22px; margin-bottom: 32px;
     }}
     .rs-toolbar-label {{
         color: {TEXT_FAINT}; font-size: 10.5px; text-transform: uppercase;
         letter-spacing: 0.6px; font-weight: 700; margin-bottom: 8px;
     }}
 
+    /* ============ Section dividers ============ */
     .rs-section-label {{
-        color: {TEXT_MAIN}; font-size: 11px; text-transform: uppercase;
-        letter-spacing: 1px; font-weight: 700; margin: 34px 0 16px 0;
-        padding-bottom: 8px; border-bottom: 1px solid {BORDER};
+        color: {TEXT_MAIN}; font-size: 12px; text-transform: uppercase;
+        letter-spacing: 1px; font-weight: 700; margin: 40px 0 18px 0;
+        padding-bottom: 10px; border-bottom: 1px solid {BORDER};
+        display: flex; align-items: center; justify-content: space-between;
+    }}
+    .rs-section-note {{
+        color: {TEXT_FAINT}; font-size: 10.5px; text-transform: none; font-weight: 600;
+        letter-spacing: 0.2px;
     }}
 
+    /* ============ Cards ============ */
     .rs-card {{
-        border: 1px solid {BORDER}; border-radius: 4px; padding: 26px 28px; margin-bottom: 8px;
+        border: 1px solid {BORDER}; border-radius: 6px; padding: 26px 28px; margin-bottom: 8px;
     }}
-    .rs-badge {{
+    .rs-verdict-hero {{
+        border: 1px solid {BORDER}; border-radius: 6px; padding: 26px 28px; margin-bottom: 4px;
+    }}
+    .rs-pill {{
         display: inline-block; font-size: 11px; font-weight: 700;
         padding: 5px 11px; border-radius: 3px; border: 1px solid; margin-right: 8px;
         text-transform: uppercase; letter-spacing: 0.4px;
+    }}
+    .rs-exp-tag {{
+        display: inline-block; font-size: 10px; font-weight: 700; text-transform: uppercase;
+        letter-spacing: 0.6px; color: {WARN}; border: 1px solid {WARN}; border-radius: 3px;
+        padding: 3px 8px; background: {WARN}0f;
     }}
     .rs-stat-strip {{ display: flex; gap: 32px; flex-wrap: wrap; margin-top: 20px; }}
     .rs-stat {{ display: flex; flex-direction: column; }}
@@ -227,27 +249,33 @@ st.markdown(f"""
     .rs-bar-fill-muted {{ height: 100%; background: {TEXT_FAINT}; }}
 
     .rs-reject {{
-        background: {SURFACE}; border-left: 2px solid {DANGER}; border-radius: 4px;
+        background: {SURFACE}; border-left: 2px solid {DANGER}; border-radius: 6px;
         padding: 18px 20px; color: {TEXT_MAIN}; border-top: 1px solid {BORDER};
         border-right: 1px solid {BORDER}; border-bottom: 1px solid {BORDER};
     }}
 
     .rs-warn-box {{
-        background: {SURFACE}; border-left: 2px solid {WARN}; border-radius: 4px;
+        background: {SURFACE}; border-left: 2px solid {WARN}; border-radius: 6px;
         padding: 16px 20px; color: {TEXT_MAIN}; border-top: 1px solid {BORDER};
         border-right: 1px solid {BORDER}; border-bottom: 1px solid {BORDER};
     }}
 
-    .rs-experimental-tag {{
-        display: inline-block; font-size: 10px; font-weight: 700; text-transform: uppercase;
-        letter-spacing: 0.6px; color: {WARN}; border: 1px solid {WARN}; border-radius: 3px;
-        padding: 2px 7px; margin-left: 10px; vertical-align: middle;
+    .rs-idle-box {{
+        border: 1px dashed {BORDER}; border-radius: 6px; padding: 30px 24px;
+        text-align: center; color: {TEXT_MUTED};
     }}
 
-    .rs-timeline-row {{
-        display: flex; justify-content: space-between; align-items: center;
+    .rs-timeline-chip {{
+        display: flex; flex-direction: column; gap: 2px;
         padding: 12px 0; border-bottom: 1px solid {BORDER}; font-size: 12.5px;
     }}
+
+    .rs-empty {{
+        text-align:center; padding:70px 20px; color:{TEXT_MUTED};
+        border: 1px dashed {BORDER}; border-radius: 6px;
+    }}
+    .rs-empty-title {{ color:{TEXT_MAIN}; font-size:15px; font-weight:700; margin-bottom:6px; }}
+    .rs-empty-sub {{ font-size:12.5px; }}
     </style>
 """, unsafe_allow_html=True)
 
@@ -334,15 +362,15 @@ MODEL_CARD = {
     "explainability_method": "DR: Grad-CAM, quadrant-mapped. HR: artery/vein segmentation masks with branch-split vessel measurement + numeric AVR/CRAE/CRVE via the clinically standard B-zone + Knudtson formula.",
     "uncertainty_method": "DR: Test-Time Augmentation (TTA) ensemble variance across 3 views. HR: explicit 'indeterminate' abstain state when fewer than 2 reliable vessel segments are resolved in the B-zone — no forced grade on weak signal.",
     "known_limitations": [
-        "HR Grade 4 is produced by an unvalidated heuristic (disc area ratio + margin gradient sharpness), not a trained papilledema detector — always shown as 'Suspected' and requires clinical confirmation.",
+        "HR is an experimental, opt-in secondary screen. Grade 4 is produced by an unvalidated heuristic (disc area ratio + margin gradient sharpness), not a trained papilledema detector — always shown as 'Suspected' and requires clinical confirmation.",
         "Optic disc localization uses a brightness + circularity heuristic; extreme exudate/glare cases can still occasionally mislocalize the disc.",
-        "HR inference now reimplements RRWNet's actual published preprocessing.py enhancement algorithm (illumination background-subtraction), not an approximation — but exact numerical parity with the authors' PIL/skimage pipeline is not guaranteed.",
+        "HR inference reimplements RRWNet's published preprocessing.py enhancement algorithm (illumination background-subtraction), not an approximation — but exact numerical parity with the authors' PIL/skimage pipeline is not guaranteed.",
         "The AVR-to-KWB-grade cutoffs used here are literature-informed thresholds, not independently calibrated against a labeled KWB dataset by this project.",
         "Patient history is stored in local SQLite on the deployment container's filesystem and will not persist across container restarts/redeploys — acceptable for this development stage, flagged as a known constraint rather than solved.",
         "DR predictions rely strictly on original EfficientNet preprocessing to maintain baseline accuracy.",
-        "Not a standalone diagnostic tool. Intended as a dual-screening decision-support triage aid."
+        "Not a standalone diagnostic tool. Intended as a dual-screening decision-support triage aid; the DR pipeline is the validated primary result, HR is a supplementary experimental signal."
     ],
-    "intended_use": "Screening triage support for combined diabetic and hypertensive retinopathy grading.",
+    "intended_use": "Screening triage support for combined diabetic and hypertensive retinopathy grading. DR grading is the primary, validated output. HR grading is an explicit, user-triggered experimental supplement.",
 }
 
 def focal_loss():
@@ -426,7 +454,7 @@ def load_patient_history():
         })
     return history
 
-def save_patient_record(p_id, diagnosis, confidence, attention_index, hr_diagnosis="N/A"):
+def save_patient_record(p_id, diagnosis, confidence, attention_index, hr_diagnosis="Not run"):
     ist_timezone = pytz.timezone('Asia/Kolkata')
     current_time_ist = datetime.now(ist_timezone).strftime("%Y-%m-%d %H:%M")
 
@@ -440,6 +468,22 @@ def save_patient_record(p_id, diagnosis, confidence, attention_index, hr_diagnos
         conn.commit()
         conn.close()
 
+    return load_patient_history().get(p_id, [])
+
+
+def update_patient_record_hr(p_id, timestamp, hr_diagnosis):
+    """Back-fills the HR diagnosis column on the most recent matching visit row,
+    used when a user runs the experimental HR screen after the DR record was
+    already saved (HR is opt-in and may happen after the fact)."""
+    with _db_lock:
+        conn = _get_db_connection()
+        conn.execute(
+            "UPDATE visits SET hr_diagnosis = ? WHERE patient_id = ? AND timestamp = ? "
+            "AND id = (SELECT MAX(id) FROM visits WHERE patient_id = ? AND timestamp = ?)",
+            (hr_diagnosis, p_id, timestamp, p_id, timestamp)
+        )
+        conn.commit()
+        conn.close()
     return load_patient_history().get(p_id, [])
 
 # =====================================================================
@@ -475,12 +519,15 @@ def run_tta_ensemble_inference(model_obj, base_tensor):
 #  4. HYPERTENSIVE RETINOPATHY (HR) ENGINE — fully isolated from DR
 #  Public entry point takes ONLY the raw image + fundus geometry.
 #  Never reads dr_pred_idx, DR probabilities, or any DR-pipeline state.
+#  Experimental / opt-in — only invoked when the user explicitly triggers it.
 # =====================================================================
 @st.cache_resource(show_spinner="Loading HR vascular model (one-time)...")
 def load_hr_model():
     """
     Loads pretrained RRWNet A/V segmentation weights (Hugging Face).
-    Cached once per server process.
+    Cached once per server process. Only loaded on first explicit HR run
+    request — never at app startup — so the experimental pipeline carries
+    zero cost for users who never trigger it.
 
     FIXED (Issue #1): the previous runtime `os.system("git clone ...")`
     fallback has been removed entirely. It would silently break in any
@@ -843,7 +890,8 @@ def analyze_hypertensive_retinopathy(img_bgr, x_center, y_center, radius):
     PUBLIC ENTRY POINT. Signature takes ONLY raw image + fundus geometry —
     no DR prediction, no DR probabilities, no shared state with the DR path.
     Fails soft: any error returns an 'error'/'indeterminate' status instead
-    of raising and crashing the Streamlit process.
+    of raising and crashing the Streamlit process. Only called when the
+    user explicitly triggers the experimental HR screen from the UI.
     """
     try:
         artery_mask, vein_mask, vessel_mask, debug_stats = run_av_segmentation(img_bgr, x_center, y_center, radius)
@@ -938,7 +986,7 @@ def generate_clinical_pdf(p_id, verdict, conf, attn_idx, quad, quad_pct, directi
     pdf.line(10, pdf.get_y() + 2, 200, pdf.get_y() + 2)
     pdf.ln(6)
 
-    # DR Section
+    # DR Section — primary, validated result
     pdf.set_font("Helvetica", "B", 13)
     pdf.set_text_color(229, 111, 34)
     pdf.cell(0, 8, _pdf_safe(f"1. Diabetic Retinopathy (DR): {verdict}"), ln=True)
@@ -949,16 +997,19 @@ def generate_clinical_pdf(p_id, verdict, conf, attn_idx, quad, quad_pct, directi
     pdf.cell(0, 7, _pdf_safe(f"   - Dominant Focus: {quad} Quadrant ({quad_pct:.1f}%)"), ln=True)
     pdf.ln(3)
 
-    # HR Section
+    # HR Section — experimental, opt-in secondary screen
     pdf.set_font("Helvetica", "B", 13)
     pdf.set_text_color(94, 177, 239)
-    pdf.cell(0, 8, _pdf_safe(f"2. Hypertensive Retinopathy (HR): {hr_results.get('pred_name', 'N/A')}"), ln=True)
+    hr_label = hr_results.get('pred_name', 'Not run') if hr_results else 'Not run'
+    pdf.cell(0, 8, _pdf_safe(f"2. Hypertensive Retinopathy (HR) [EXPERIMENTAL]: {hr_label}"), ln=True)
     pdf.set_font("Helvetica", "", 11)
     pdf.set_text_color(0, 0, 0)
-    if hr_results.get("status") == "ok":
+    if not hr_results:
+        pdf.cell(0, 7, _pdf_safe("   - Status: NOT RUN (experimental screen was not requested for this session)"), ln=True)
+    elif hr_results.get("status") == "ok":
         pdf.cell(0, 7, _pdf_safe(f"   - Arteriolar-to-Venular Ratio (AVR): {hr_results['avr']}"), ln=True)
         pdf.cell(0, 7, _pdf_safe(f"   - CRAE: {hr_results['crae']}  |  CRVE: {hr_results['crve']} (disc-diameter-normalized units)"), ln=True)
-        pdf.cell(0, 7, _pdf_safe("   - Scale: Keith-Wagener-Barker Grades 0-3 (Grade 4 out of current scope)"), ln=True)
+        pdf.cell(0, 7, _pdf_safe("   - Scale: Keith-Wagener-Barker Grades 0-4. This module is experimental and unvalidated."), ln=True)
     else:
         pdf.cell(0, 7, _pdf_safe(f"   - Status: {hr_results.get('status', 'unknown').upper()}"), ln=True)
         pdf.multi_cell(0, 6, _pdf_safe(f"   - {hr_results.get('message', '')}"))
@@ -967,8 +1018,11 @@ def generate_clinical_pdf(p_id, verdict, conf, attn_idx, quad, quad_pct, directi
     pdf.set_font("Helvetica", "B", 11)
     pdf.cell(0, 7, _pdf_safe("Official Management Protocol Directives:"), ln=True)
     pdf.set_font("Helvetica", "I", 10)
-    hr_directive = HR_CLINICAL_DIRECTIVES.get(hr_results.get("pred_idx"), "N/A - see HR status above.")
-    pdf.multi_cell(0, 5, _pdf_safe(f"DR: {directive}\nHR: {hr_directive}"))
+    if hr_results:
+        hr_directive = HR_CLINICAL_DIRECTIVES.get(hr_results.get("pred_idx"), "N/A - see HR status above.")
+    else:
+        hr_directive = "N/A - experimental HR screen was not run for this session."
+    pdf.multi_cell(0, 5, _pdf_safe(f"DR: {directive}\nHR (experimental): {hr_directive}"))
 
     return bytes(pdf.output())
 
@@ -1100,14 +1154,14 @@ def compute_diagnostic_graphs(img_tensor, grad_model_obj, pred_idx, img_bgr, x_c
 #  6. USER INTERFACE
 # =====================================================================
 
-# HERO HEADER
+# HERO HEADER — text-only, no inbuilt icons
 st.markdown(f"""
 <div class="rs-hero">
-    <div class="rs-hero-mark">🩺</div>
     <div>
         <div class="rs-hero-title">RetiScan Pro <span style="color:{ACCENT};">v5</span></div>
-        <div class="rs-hero-sub">AI-assisted Diabetic & Hypertensive Retinopathy multi-diagnostic grading</div>
+        <div class="rs-hero-sub">AI-assisted diabetic retinopathy grading, with an experimental hypertensive retinopathy screen</div>
     </div>
+    <div class="rs-hero-tag">Decision-support tool</div>
 </div>
 """, unsafe_allow_html=True)
 
@@ -1121,10 +1175,12 @@ with tb_col2:
     st.markdown('<div class="rs-toolbar-label">Retinal Record Asset</div>', unsafe_allow_html=True)
     uploaded_file = st.file_uploader("uploader", type=["jpg", "jpeg", "png"], label_visibility="collapsed") if model_loaded else None
 with tb_col3:
-    st.markdown('<div class="rs-toolbar-label">Active Pipelines</div>', unsafe_allow_html=True)
+    st.markdown('<div class="rs-toolbar-label">Active pipelines</div>', unsafe_allow_html=True)
     st.markdown(f"""
-    <div style="font-size:13px; font-weight:700; color:{TEXT_MAIN}; margin-top:6px;">1. DR: EfficientNetB3 (ICDR)</div>
-    <div style="font-size:11.5px; color:{TEXT_MUTED}; margin-top:2px;">2. HR: RRWNet A/V Segmentation + Knudtson AVR</div>
+    <div style="font-size:13px; font-weight:700; color:{TEXT_MAIN}; margin-top:6px;">DR — EfficientNetB3 (ICDR)</div>
+    <div style="font-size:11.5px; color:{TEXT_MUTED}; margin-top:2px;">HR — RRWNet A/V segmentation + Knudtson AVR
+        <span style="color:{WARN}; font-weight:700;"> (experimental, opt-in)</span>
+    </div>
     """, unsafe_allow_html=True)
 st.markdown('</div>', unsafe_allow_html=True)
 
@@ -1133,10 +1189,9 @@ if not model_loaded:
 
 if uploaded_file is None:
     st.markdown(f"""
-    <div style="text-align:center; padding:80px 20px; color:{TEXT_MUTED};">
-        <div style="font-size:38px; margin-bottom:14px;">🖼️</div>
-        <div style="color:{TEXT_MAIN}; font-size:16px; font-weight:700; margin-bottom:6px;">Awaiting retinal image</div>
-        <div style="font-size:13px;">Upload a fundus photograph above to initiate multi-disease diagnostic screening.</div>
+    <div class="rs-empty">
+        <div class="rs-empty-title">Awaiting retinal image</div>
+        <div class="rs-empty-sub">Upload a fundus photograph above to run the diabetic retinopathy grading pipeline.</div>
     </div>
     """, unsafe_allow_html=True)
     st.stop()
@@ -1156,7 +1211,7 @@ if st.session_state.get("rs_cache_key") != cache_key:
         st.session_state.pop("rs_cache_data", None)
         st.markdown(f"""
         <div class='rs-reject'>
-            <b style="color:{DANGER};">✕ SCREENING REJECTED</b><br><br>{message}<br>
+            <b style="color:{DANGER};">SCREENING REJECTED</b><br><br>{message}<br>
             <span style='font-size:12px; opacity:0.75;'>Pipeline terminated automatically to prevent false classification predictions.</span>
         </div>
         """, unsafe_allow_html=True)
@@ -1176,15 +1231,16 @@ if st.session_state.get("rs_cache_key") != cache_key:
         img_tensor, grad_model, pred_idx, img_bgr, x_center, y_center, radius
     )
 
-    with st.spinner("Analyzing Hypertensive Retinopathy (isolated A/V pipeline)..."):
-        vessel_map = generate_vascular_map(img_bgr, x_center, y_center, radius)  # DR display only
-        # HR call takes ONLY the raw image + fundus geometry — no dr_pred_idx,
-        # no DR probabilities, no vessel_map. Independence is structural.
-        hr_results = analyze_hypertensive_retinopathy(img_bgr, x_center, y_center, radius)
+    # DR-side vascular topology display only — NOT the HR engine, no HR call here.
+    vessel_map = generate_vascular_map(img_bgr, x_center, y_center, radius)
 
+    # HR is experimental and opt-in — it is deliberately NOT run here.
+    # The DR record is saved immediately with hr_diagnosis="Not run"; the
+    # HR result (if the user later triggers it) back-fills this row.
     record_logs = save_patient_record(
-        patient_id, pred_name, confidence, attention_index, hr_results.get("pred_name", "N/A")
+        patient_id, pred_name, confidence, attention_index, "Not run"
     )
+    saved_timestamp = record_logs[-1]["timestamp"] if record_logs else None
 
     heatmap_color = cv2.applyColorMap(isolated_heatmap, cv2.COLORMAP_JET)
     gradcam_blend = cv2.addWeighted(heatmap_color, 0.38, img_bgr, 0.62, 0)
@@ -1204,18 +1260,26 @@ if st.session_state.get("rs_cache_key") != cache_key:
         "attention_index": attention_index,
         "dominant_quad": dominant_quad,
         "quad_pct": quad_pct,
-        "hr_results": hr_results,
         "record_logs": record_logs,
         "img_rgb": img_rgb,
         "gradcam_rgb": gradcam_rgb,
         "boundary_rgb": boundary_rgb,
         "vessel_map": vessel_map,
+        "x_center": x_center,
+        "y_center": y_center,
+        "radius": radius,
+        "saved_timestamp": saved_timestamp,
     }
+    # HR result lives in its own session key, separate from the per-image
+    # cache above, so switching images doesn't silently carry over a stale
+    # HR verdict from a previous upload.
+    st.session_state["rs_hr_result"] = None
+    st.session_state["rs_hr_result_key"] = None
 
 # Retrieve cached values
 cached = st.session_state["rs_cache_data"]
 probabilities      = cached["probabilities"]
-consensus_status   = cached["consensus_status"]
+consensus_status    = cached["consensus_status"]
 class_uncertainty  = cached["class_uncertainty"]
 pred_idx           = cached["pred_idx"]
 pred_name          = cached["pred_name"]
@@ -1223,12 +1287,15 @@ confidence         = cached["confidence"]
 attention_index    = cached["attention_index"]
 dominant_quad      = cached["dominant_quad"]
 quad_pct           = cached["quad_pct"]
-hr_results         = cached["hr_results"]
 record_logs        = cached["record_logs"]
 img_rgb            = cached["img_rgb"]
 gradcam_rgb        = cached["gradcam_rgb"]
 boundary_rgb       = cached["boundary_rgb"]
 vessel_map         = cached["vessel_map"]
+x_center           = cached["x_center"]
+y_center           = cached["y_center"]
+radius             = cached["radius"]
+saved_timestamp    = cached["saved_timestamp"]
 accent_color       = SEVERITY_COLOR[pred_name]
 
 referable_prob = float(np.sum([probabilities[i] for i in REFERABLE_CLASSES])) * 100.0
@@ -1237,25 +1304,28 @@ referral_color = DANGER if is_referable else EMERALD
 referral_label = "REFERABLE DR" if is_referable else "NON-REFERABLE DR"
 
 # =====================================================================
-#  SECTION 1: UNTOUCHED DIABETIC RETINOPATHY (DR) EVALUATION DECK
+#  SECTION 1: DIABETIC RETINOPATHY (DR) EVALUATION DECK — primary, validated
 # =====================================================================
-st.markdown('<div class="rs-divider-label">Diabetic Retinopathy (DR) Analysis Deck</div>', unsafe_allow_html=True)
+st.markdown(f"""
+<div class="rs-section-label">
+    <span>Diabetic retinopathy analysis</span>
+    <span class="rs-section-note">Primary pipeline</span>
+</div>
+""", unsafe_allow_html=True)
 
 st.markdown(f"""
 <div class="rs-verdict-hero" style="background: linear-gradient(120deg, {accent_color}18, {SURFACE} 55%);">
-    <div style="color:{TEXT_MUTED}; font-size:11px; text-transform:uppercase; letter-spacing:1px; font-weight:800;">Diabetic Diagnostic Verdict</div>
+    <div style="color:{TEXT_MUTED}; font-size:11px; text-transform:uppercase; letter-spacing:1px; font-weight:800;">Diabetic diagnostic verdict</div>
     <div style="font-size:42px; font-weight:800; color:{accent_color}; margin:6px 0 12px 0; letter-spacing:-0.5px;">{pred_name}</div>
     <div>
-        <span class="rs-pill" style="border-color:{referral_color}; color:{referral_color}; background:{referral_color}14;">
-            {"⬤" if is_referable else "○"} {referral_label}
-        </span>
+        <span class="rs-pill" style="border-color:{referral_color}; color:{referral_color}; background:{referral_color}14;">{referral_label}</span>
         <span class="rs-pill" style="border-color:{BORDER}; color:{TEXT_MUTED};">{consensus_status}</span>
     </div>
     <div class="rs-stat-strip">
-        <div class="rs-stat"><div class="rs-stat-label">DR Confidence</div><div class="rs-stat-value">{confidence:.1f}%</div></div>
-        <div class="rs-stat"><div class="rs-stat-label">Attention Intensity</div><div class="rs-stat-value">{attention_index:.1f}%</div></div>
-        <div class="rs-stat"><div class="rs-stat-label">Referable Probability</div><div class="rs-stat-value" style="color:{referral_color};">{referable_prob:.1f}%</div></div>
-        <div class="rs-stat"><div class="rs-stat-label">Dominant Quadrant</div><div class="rs-stat-value" style="font-size:15px;">{dominant_quad}</div></div>
+        <div class="rs-stat"><div class="rs-stat-label">DR confidence</div><div class="rs-stat-value">{confidence:.1f}%</div></div>
+        <div class="rs-stat"><div class="rs-stat-label">Attention intensity</div><div class="rs-stat-value">{attention_index:.1f}%</div></div>
+        <div class="rs-stat"><div class="rs-stat-label">Referable probability</div><div class="rs-stat-value" style="color:{referral_color};">{referable_prob:.1f}%</div></div>
+        <div class="rs-stat"><div class="rs-stat-label">Dominant quadrant</div><div class="rs-stat-value" style="font-size:15px;">{dominant_quad}</div></div>
     </div>
 </div>
 <p style="color:{TEXT_MAIN}; font-size:13.5px; line-height:1.65; margin: 14px 4px 0 4px;">{CLASS_DESCRIPTIONS[pred_idx]}</p>
@@ -1265,19 +1335,19 @@ evidence_col, rail_col = st.columns([1.35, 1], gap="large")
 
 with evidence_col:
     view_choice = st.radio(
-        "view", ["Base Image", "Grad-CAM Overlay", "Vascular Topology", "ROI Boundaries"],
+        "view", ["Base image", "Grad-CAM overlay", "Vascular topology", "ROI boundaries"],
         horizontal=True, label_visibility="collapsed"
     )
-    if view_choice == "Base Image":
+    if view_choice == "Base image":
         st.image(img_rgb, use_container_width=True)
-    elif view_choice == "Grad-CAM Overlay":
+    elif view_choice == "Grad-CAM overlay":
         st.image(gradcam_rgb, use_container_width=True)
-    elif view_choice == "Vascular Topology":
+    elif view_choice == "Vascular topology":
         st.image(vessel_map, use_container_width=True, clamp=True)
     else:
         st.image(boundary_rgb, use_container_width=True)
 
-    st.markdown('<div class="rs-divider-label">DR Grade Probabilities</div>', unsafe_allow_html=True)
+    st.markdown('<div class="rs-section-label" style="margin-top:26px; border-bottom:none; padding-bottom:0;"><span>DR grade probabilities</span></div>', unsafe_allow_html=True)
     for i in range(NUM_CLASSES):
         cname = CLASS_NAMES[i]
         pct = float(probabilities[i])
@@ -1289,7 +1359,7 @@ with evidence_col:
         st.markdown(
             f"""<div class='rs-prob-row'><span style='color:{label_color}; font-weight:{weight};'>{cname}</span>
             <span style='color:{label_color}; font-weight:{weight};'>{pct*100:.1f}%
-            <span style='color:{TEXT_FAINT}; font-weight:400; font-size:11px;'>(± {uncertainty:.1f})</span></span></div>
+            <span style='color:{TEXT_FAINT}; font-weight:400; font-size:11px;'>(+/- {uncertainty:.1f})</span></span></div>
             <div class="rs-bar-track"><div class="{bar_fill_class}" style="width:{max(pct*100, 1.5):.2f}%;"></div></div>""",
             unsafe_allow_html=True
         )
@@ -1326,125 +1396,176 @@ with rail_col:
             f"({quad_pct:.1f}% focus). "
         )
         if trajectory_alert == "ACCELERATING":
-            xai_text += f"<span style='color:{DANGER}; font-weight:700;'>⚠ Upward pathology velocity (+{slope:.1f}%/visit) detected.</span>"
+            xai_text += f"<span style='color:{DANGER}; font-weight:700;'>Upward pathology velocity (+{slope:.1f}%/visit) detected.</span>"
 
     st.markdown(f"""
     <div class="rs-rail-accent">
-        <div class="rs-rail-title" style="color:{ACCENT};">DR Explainable AI Rationale</div>
+        <div class="rs-rail-title" style="color:{ACCENT};">DR explainable AI rationale</div>
         <div class="rs-rail-body">{xai_text}</div>
     </div>
     <div class="rs-rail-warn">
-        <div class="rs-rail-title" style="color:{WARN};">DR Management Directive</div>
+        <div class="rs-rail-title" style="color:{WARN};">DR management directive</div>
         <div class="rs-rail-body">{CLINICAL_DIRECTIVES[pred_idx]}</div>
     </div>
     """, unsafe_allow_html=True)
 
 # =====================================================================
 #  SECTION 2: HYPERTENSIVE RETINOPATHY (HR) EVALUATION DECK
-#  Fully isolated pipeline — RRWNet A/V segmentation + Knudtson AVR.
+#  Experimental, opt-in — the model only loads and runs after the user
+#  explicitly clicks the trigger button below. Nothing here executes on
+#  page load or on DR completion.
 # =====================================================================
-st.markdown('<div class="rs-divider-label">Hypertensive Retinopathy (HR) Analysis Deck</div>', unsafe_allow_html=True)
+st.markdown(f"""
+<div class="rs-section-label">
+    <span>Hypertensive retinopathy screen <span class="rs-exp-tag" style="margin-left:8px;">Experimental</span></span>
+    <span class="rs-section-note">Opt-in secondary pipeline, not clinically validated</span>
+</div>
+""", unsafe_allow_html=True)
 
-if hr_results.get("status") != "ok":
-    icon = "⚠" if hr_results.get("status") == "indeterminate" else "✕"
+hr_result_key = cache_key
+hr_already_run = (
+    st.session_state.get("rs_hr_result_key") == hr_result_key
+    and st.session_state.get("rs_hr_result") is not None
+)
+
+if not hr_already_run:
     st.markdown(f"""
-    <div class="rs-warn-box">
-        <b style="color:{WARN};">{icon} {hr_results.get('pred_name', 'HR Unavailable')}</b><br><br>
-        {hr_results.get('message', 'No further detail available.')}
-        <div style="margin-top:10px; font-size:12px; color:{TEXT_MUTED};">
-            This does not affect the Diabetic Retinopathy result above — the two pipelines are fully independent.
-        </div>
+    <div class="rs-idle-box">
+        This screen estimates hypertensive retinopathy severity from arteriole/venule vessel segmentation.
+        It is a supplementary, experimental signal — separate from the validated DR pipeline above — and its
+        Grade 4 flag in particular relies on an unvalidated heuristic. Run it only if you want this additional,
+        exploratory read.
     </div>
     """, unsafe_allow_html=True)
+    st.markdown('<div class="rs-btn-outline" style="margin-top:14px;">', unsafe_allow_html=True)
+    run_hr_clicked = st.button("Run hypertensive retinopathy screening (experimental)", use_container_width=False)
+    st.markdown('</div>', unsafe_allow_html=True)
 
-    if "artery_mask" in hr_results:
-        m1, m2, m3 = st.columns(3)
-        with m1: st.image(hr_results["artery_mask"], caption="Detected Arteries", use_container_width=True, clamp=True)
-        with m2: st.image(hr_results["vein_mask"], caption="Detected Veins", use_container_width=True, clamp=True)
-        with m3: st.image(hr_results["vessel_mask"], caption="Vessel Union", use_container_width=True, clamp=True)
+    if run_hr_clicked:
+        with st.spinner("Loading HR vascular model and running segmentation (experimental)..."):
+            hr_outcome = analyze_hypertensive_retinopathy(img_bgr, x_center, y_center, radius)
+        st.session_state["rs_hr_result"] = hr_outcome
+        st.session_state["rs_hr_result_key"] = hr_result_key
+        if saved_timestamp:
+            record_logs = update_patient_record_hr(patient_id, saved_timestamp, hr_outcome.get("pred_name", "N/A"))
+            cached["record_logs"] = record_logs
+            st.session_state["rs_cache_data"] = cached
+        st.rerun()
 
-    # DIAGNOSTIC PANEL — shows the raw model output range so an all-black
-    # mask can be told apart from "model output real values but they were
-    # thresholded away" vs "model produced no signal at all."
-    if "debug_stats" in hr_results:
-        with st.expander("🔧 HR Diagnostic — raw segmentation output stats"):
-            ds = hr_results["debug_stats"]
+hr_results = st.session_state.get("rs_hr_result") if hr_already_run else None
+
+if hr_already_run and hr_results is not None:
+    if hr_results.get("status") != "ok":
+        label = "HR analysis incomplete"
+        st.markdown(f"""
+        <div class="rs-warn-box">
+            <b style="color:{WARN};">{hr_results.get('pred_name', label)}</b><br><br>
+            {hr_results.get('message', 'No further detail available.')}
+            <div style="margin-top:10px; font-size:12px; color:{TEXT_MUTED};">
+                This does not affect the Diabetic Retinopathy result above — the two pipelines are fully independent.
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        if "artery_mask" in hr_results:
+            m1, m2, m3 = st.columns(3)
+            with m1: st.image(hr_results["artery_mask"], caption="Detected arteries", use_container_width=True, clamp=True)
+            with m2: st.image(hr_results["vein_mask"], caption="Detected veins", use_container_width=True, clamp=True)
+            with m3: st.image(hr_results["vessel_mask"], caption="Vessel union", use_container_width=True, clamp=True)
+
+        if "debug_stats" in hr_results:
+            with st.expander("HR diagnostic — raw segmentation output stats"):
+                ds = hr_results["debug_stats"]
+                st.markdown(f"""
+                <div style="font-size:12.5px; color:{TEXT_MUTED}; font-family:monospace; line-height:1.8;">
+                    Artery channel — min: {ds['artery'][0]:.4f}, max: {ds['artery'][1]:.4f}, mean: {ds['artery'][2]:.4f}<br>
+                    Vein channel &nbsp;— min: {ds['vein'][0]:.4f}, max: {ds['vein'][1]:.4f}, mean: {ds['vein'][2]:.4f}<br>
+                    Vessel channel — min: {ds['vessel'][0]:.4f}, max: {ds['vessel'][1]:.4f}, mean: {ds['vessel'][2]:.4f}
+                </div>
+                <p style="font-size:11.5px; color:{TEXT_FAINT}; margin-top:10px;">
+                    If max values here are near 0 across all channels, the model itself is producing no signal
+                    (likely a weight-loading or preprocessing mismatch, not a thresholding issue). If max values
+                    are meaningfully above 0 but masks still look empty, the adaptive threshold should now catch
+                    it — if this expander shows non-trivial max values but the masks above are still black, that
+                    points to a downstream masking bug, not the model.
+                </p>
+                """, unsafe_allow_html=True)
+    else:
+        hr_color = HR_SEVERITY_COLOR[hr_results["pred_name"]]
+        hr_is_severe = hr_results["pred_idx"] >= 2
+        hr_ref_color = DANGER if hr_is_severe else EMERALD
+
+        hr_col1, hr_col2 = st.columns([1.35, 1], gap="large")
+
+        with hr_col1:
             st.markdown(f"""
-            <div style="font-size:12.5px; color:{TEXT_MUTED}; font-family:monospace; line-height:1.8;">
-                Artery channel — min: {ds['artery'][0]:.4f}, max: {ds['artery'][1]:.4f}, mean: {ds['artery'][2]:.4f}<br>
-                Vein channel &nbsp;— min: {ds['vein'][0]:.4f}, max: {ds['vein'][1]:.4f}, mean: {ds['vein'][2]:.4f}<br>
-                Vessel channel — min: {ds['vessel'][0]:.4f}, max: {ds['vessel'][1]:.4f}, mean: {ds['vessel'][2]:.4f}
+            <div class="rs-verdict-hero" style="background: linear-gradient(120deg, {hr_color}18, {SURFACE} 55%); border: 1px solid {BORDER}; padding: 24px 28px;">
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <div style="color:{TEXT_MUTED}; font-size:11px; text-transform:uppercase; letter-spacing:1px; font-weight:800;">Hypertensive diagnostic verdict</div>
+                    <span class="rs-exp-tag">Experimental</span>
+                </div>
+                <div style="font-size:36px; font-weight:800; color:{hr_color}; margin:6px 0 10px 0; letter-spacing:-0.5px;">{hr_results['pred_name']}</div>
+                <div>
+                    <span class="rs-pill" style="border-color:{hr_ref_color}; color:{hr_ref_color}; background:{hr_ref_color}14;">
+                        {"CARDIO-VASCULAR ALERT" if hr_is_severe else "SYSTEMICALLY STABLE"}
+                    </span>
+                    <span class="rs-pill" style="border-color:{BORDER}; color:{TEXT_MUTED};">KWB SCALE (GRADES 0-4)</span>
+                </div>
+                <div class="rs-stat-strip">
+                    <div class="rs-stat"><div class="rs-stat-label">AVR</div><div class="rs-stat-value">{hr_results['avr']}</div></div>
+                    <div class="rs-stat"><div class="rs-stat-label">CRAE</div><div class="rs-stat-value">{hr_results['crae']}</div></div>
+                    <div class="rs-stat"><div class="rs-stat-label">CRVE</div><div class="rs-stat-value">{hr_results['crve']}</div></div>
+                </div>
             </div>
-            <p style="font-size:11.5px; color:{TEXT_FAINT}; margin-top:10px;">
-                If max values here are near 0 across all channels, the model itself is producing no signal
-                (likely a weight-loading or preprocessing mismatch, not a thresholding issue).
-                If max values are meaningfully above 0 but masks still look empty, the adaptive
-                threshold should now catch it — if this expander shows non-trivial max values but the
-                masks above are still black, that points to a downstream masking bug, not the model.
-            </p>
+            <p style="color:{TEXT_MAIN}; font-size:13px; line-height:1.6; margin: 12px 4px 18px 4px;">{HR_CLASS_DESCRIPTIONS[hr_results['pred_idx']]}</p>
             """, unsafe_allow_html=True)
-else:
-    hr_color = HR_SEVERITY_COLOR[hr_results["pred_name"]]
-    hr_is_severe = hr_results["pred_idx"] >= 2
-    hr_ref_color = DANGER if hr_is_severe else EMERALD
 
-    hr_col1, hr_col2 = st.columns([1.35, 1], gap="large")
+            st.markdown('<div class="rs-section-label" style="border-bottom:none; padding-bottom:0;"><span>A/V segmentation evidence</span></div>', unsafe_allow_html=True)
+            m1, m2, m3 = st.columns(3)
+            with m1: st.image(hr_results["artery_mask"], caption="Arteries", use_container_width=True, clamp=True)
+            with m2: st.image(hr_results["vein_mask"], caption="Veins", use_container_width=True, clamp=True)
+            with m3: st.image(hr_results["vessel_mask"], caption="Vessel union", use_container_width=True, clamp=True)
 
-    with hr_col1:
-        st.markdown(f"""
-        <div class="rs-verdict-hero" style="background: linear-gradient(120deg, {hr_color}18, {SURFACE} 55%); border: 1px solid {BORDER}; padding: 24px 28px;">
-            <div style="color:{TEXT_MUTED}; font-size:11px; text-transform:uppercase; letter-spacing:1px; font-weight:800;">Hypertensive Diagnostic Verdict</div>
-            <div style="font-size:36px; font-weight:800; color:{hr_color}; margin:6px 0 10px 0; letter-spacing:-0.5px;">{hr_results['pred_name']}</div>
-            <div>
-                <span class="rs-pill" style="border-color:{hr_ref_color}; color:{hr_ref_color}; background:{hr_ref_color}14;">
-                    {"⬤ CARDIO-VASCULAR ALERT" if hr_is_severe else "○ SYSTEMICALLY STABLE"}
-                </span>
-                <span class="rs-pill" style="border-color:{BORDER}; color:{TEXT_MUTED};">KWB SCALE (Grades 0-3)</span>
+        with hr_col2:
+            st.markdown(f"""
+            <div class="rs-rail-accent" style="border-left-color: {INFO};">
+                <div class="rs-rail-title" style="color:{INFO};">Vascular topography rationale</div>
+                <div class="rs-rail-body">
+                    Arteriolar-to-Venular Ratio (AVR) of <code>{hr_results['avr']}</code> computed via the clinically
+                    standard Knudtson-Parr-Hubbard formula, using vessel calibers measured in the B-zone
+                    (0.5-1.0 optic disc diameters from the disc margin) of independently segmented, branch-split
+                    arteries (CRAE {hr_results['crae']}) and veins (CRVE {hr_results['crve']}) — both normalized to
+                    percent of optic-disc-diameter so the result is resolution-independent.
+                </div>
             </div>
-            <div class="rs-stat-strip">
-                <div class="rs-stat"><div class="rs-stat-label">AVR</div><div class="rs-stat-value">{hr_results['avr']}</div></div>
-                <div class="rs-stat"><div class="rs-stat-label">CRAE</div><div class="rs-stat-value">{hr_results['crae']}</div></div>
-                <div class="rs-stat"><div class="rs-stat-label">CRVE</div><div class="rs-stat-value">{hr_results['crve']}</div></div>
+            <div class="rs-rail-warn">
+                <div class="rs-rail-title" style="color:{WARN};">HR systemic management directive (experimental)</div>
+                <div class="rs-rail-body">{HR_CLINICAL_DIRECTIVES[hr_results['pred_idx']]}</div>
             </div>
-        </div>
-        <p style="color:{TEXT_MAIN}; font-size:13px; line-height:1.6; margin: 12px 4px 18px 4px;">{HR_CLASS_DESCRIPTIONS[hr_results['pred_idx']]}</p>
-        """, unsafe_allow_html=True)
+            <div class="rs-rail">
+                <div class="rs-rail-title" style="color:{TEXT_MUTED};">Multi-disease interaction note</div>
+                <div class="rs-rail-body" style="color:{TEXT_MUTED}; font-size:12.5px;">
+                    Concurrent Diabetic Retinopathy (<strong>{pred_name}</strong>) and Hypertensive Retinopathy (<strong>{hr_results['pred_name']}</strong>)
+                    exponentially increase the risk of macular edema and vision loss. Treat the HR figure as exploratory.
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
 
-        st.markdown('<div class="rs-divider-label">A/V Segmentation Evidence</div>', unsafe_allow_html=True)
-        m1, m2, m3 = st.columns(3)
-        with m1: st.image(hr_results["artery_mask"], caption="Arteries", use_container_width=True, clamp=True)
-        with m2: st.image(hr_results["vein_mask"], caption="Veins", use_container_width=True, clamp=True)
-        with m3: st.image(hr_results["vessel_mask"], caption="Vessel Union", use_container_width=True, clamp=True)
-
-    with hr_col2:
-        st.markdown(f"""
-        <div class="rs-rail-accent" style="border-left-color: {INFO};">
-            <div class="rs-rail-title" style="color:{INFO};">Vascular Topography Rationale</div>
-            <div class="rs-rail-body">
-                Arteriolar-to-Venular Ratio (AVR) of <code>{hr_results['avr']}</code> computed via the clinically
-                standard Knudtson-Parr-Hubbard formula, using vessel calibers measured in the B-zone
-                (0.5-1.0 optic disc diameters from the disc margin) of independently segmented, branch-split
-                arteries (CRAE {hr_results['crae']}) and veins (CRVE {hr_results['crve']}) — both normalized to
-                % of optic-disc-diameter so the result is resolution-independent.
-            </div>
-        </div>
-        <div class="rs-rail-warn">
-            <div class="rs-rail-title" style="color:{WARN};">HR Systemic Management Directive</div>
-            <div class="rs-rail-body">{HR_CLINICAL_DIRECTIVES[hr_results['pred_idx']]}</div>
-        </div>
-        <div class="rs-rail">
-            <div class="rs-rail-title" style="color:{TEXT_MUTED};">Multi-Disease Interaction Note</div>
-            <div class="rs-rail-body" style="color:{TEXT_MUTED}; font-size:12.5px;">
-                Concurrent Diabetic Retinopathy (<strong>{pred_name}</strong>) and Hypertensive Retinopathy (<strong>{hr_results['pred_name']}</strong>)
-                exponentially increase the risk of macular edema and vision loss.
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
+    st.markdown('<div class="rs-btn-outline">', unsafe_allow_html=True)
+    if st.button("Re-run experimental HR screen", use_container_width=False):
+        st.session_state["rs_hr_result"] = None
+        st.session_state["rs_hr_result_key"] = None
+        st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
 
 # =====================================================================
 #  SECTION 3: PATIENT HISTORY & TREND GRAPH
 # =====================================================================
-st.markdown(f'<div class="rs-divider-label">Visit History & Timeline · {patient_id}</div>', unsafe_allow_html=True)
+st.markdown(f"""
+<div class="rs-section-label">
+    <span>Visit history and timeline — {patient_id}</span>
+</div>
+""", unsafe_allow_html=True)
 
 hist_col, chart_col = st.columns([1.2, 1], gap="large")
 
@@ -1452,24 +1573,24 @@ with hist_col:
     chips_html = ""
     for i, r in enumerate(record_logs):
         sev_color = SEVERITY_COLOR.get(r["diagnosis"], TEXT_MUTED)
-        hr_diag = r.get("hr_diagnosis", "N/A")
+        hr_diag = r.get("hr_diagnosis", "Not run")
         chips_html += f"""
         <div class="rs-timeline-chip">
-            <span style="color:{TEXT_FAINT}; font-size:10px; text-transform:uppercase; font-weight:700;">Visit #{i+1} · {r['timestamp']}</span>
+            <span style="color:{TEXT_FAINT}; font-size:10px; text-transform:uppercase; font-weight:700;">Visit #{i+1} — {r['timestamp']}</span>
             <span style="color:{sev_color}; font-size:13.5px; font-weight:800;">DR: {r['diagnosis']}</span>
-            <span style="color:{INFO}; font-size:11.5px; font-weight:700;">HR: {hr_diag}</span>
-            <span style="color:{TEXT_MUTED}; font-size:10.5px;">Conf {r['confidence']}% · Attn {r['attention_index']:.1f}%</span>
+            <span style="color:{INFO}; font-size:11.5px; font-weight:700;">HR (experimental): {hr_diag}</span>
+            <span style="color:{TEXT_MUTED}; font-size:10.5px;">Confidence {r['confidence']}% — Attention {r['attention_index']:.1f}%</span>
         </div>
         """
     st.markdown(chips_html, unsafe_allow_html=True)
 
 with chart_col:
     fig, ax = plt.subplots(figsize=(4.6, 2.8))
-    ax.plot(x_indices, attention_indices, marker='o', color=ACCENT, linewidth=2.5, label='DR Attention')
+    ax.plot(x_indices, attention_indices, marker='o', color=ACCENT, linewidth=2.5, label='DR attention')
     if len(record_logs) >= MIN_VISITS_FOR_TREND:
         forecast_x = [x_indices[-1], next_x]
         forecast_y = [attention_indices[-1], next_y_pred]
-        ax.plot(forecast_x, forecast_y, linestyle='--', color=DANGER, linewidth=2, marker='x', label='DR Forecast')
+        ax.plot(forecast_x, forecast_y, linestyle='--', color=DANGER, linewidth=2, marker='x', label='DR forecast')
         ax.legend(facecolor=SURFACE, edgecolor=BORDER, labelcolor=TEXT_MUTED, fontsize=7)
     ax.set_xticks(range(len(record_logs) + (1 if len(record_logs) >= MIN_VISITS_FOR_TREND else 0)))
     extended_stamps = visit_stamps + ["(Next)"] if len(record_logs) >= MIN_VISITS_FOR_TREND else visit_stamps
@@ -1499,8 +1620,9 @@ pdf_bytes = generate_clinical_pdf(
 )
 
 st.markdown("<br>", unsafe_allow_html=True)
+export_note = "includes experimental HR result" if hr_results else "DR only — experimental HR screen not run"
 st.download_button(
-    label="📥  Export Multi-Diagnostic Summary PDF (DR + HR)",
+    label=f"Export diagnostic summary PDF ({export_note})",
     data=pdf_bytes,
     file_name=f"RetiScan_{patient_id}_{current_date_ist}.pdf",
     mime="application/pdf",
@@ -1511,32 +1633,32 @@ st.download_button(
 #  SECTION 5: AUDIT TRAIL & MODEL CARD
 # =====================================================================
 st.markdown("<div style='margin-top:30px;'></div>", unsafe_allow_html=True)
-with st.expander("🗂️  Model Card & Audit Trail", expanded=False):
+with st.expander("Model card and audit trail", expanded=False):
     mc_col1, mc_col2 = st.columns(2, gap="large")
     with mc_col1:
         st.markdown(f"""
         <p style="font-size:12.5px; color:{TEXT_MUTED}; line-height:1.9; margin:0;">
             <b style="color:{TEXT_MAIN};">Architectures:</b> {MODEL_CARD['architecture']}<br>
-            <b style="color:{TEXT_MAIN};">Input Standard:</b> {MODEL_CARD['input_resolution']}<br>
-            <b style="color:{TEXT_MAIN};">Training Corpora:</b> {MODEL_CARD['training_dataset']}<br>
-            <b style="color:{TEXT_MAIN};">Class Scope:</b> {MODEL_CARD['num_classes']}<br>
-            <b style="color:{TEXT_MAIN};">Loss Function:</b> {MODEL_CARD['loss_function']}<br>
-            <b style="color:{TEXT_MAIN};">Reported Accuracy:</b> {MODEL_CARD['reported_accuracy']}<br>
-            <b style="color:{TEXT_MAIN};">Explainability Engine:</b> {MODEL_CARD['explainability_method']}<br>
-            <b style="color:{TEXT_MAIN};">Uncertainty Pipeline:</b> {MODEL_CARD['uncertainty_method']}
+            <b style="color:{TEXT_MAIN};">Input standard:</b> {MODEL_CARD['input_resolution']}<br>
+            <b style="color:{TEXT_MAIN};">Training corpora:</b> {MODEL_CARD['training_dataset']}<br>
+            <b style="color:{TEXT_MAIN};">Class scope:</b> {MODEL_CARD['num_classes']}<br>
+            <b style="color:{TEXT_MAIN};">Loss function:</b> {MODEL_CARD['loss_function']}<br>
+            <b style="color:{TEXT_MAIN};">Reported accuracy:</b> {MODEL_CARD['reported_accuracy']}<br>
+            <b style="color:{TEXT_MAIN};">Explainability engine:</b> {MODEL_CARD['explainability_method']}<br>
+            <b style="color:{TEXT_MAIN};">Uncertainty pipeline:</b> {MODEL_CARD['uncertainty_method']}
         </p>
         """, unsafe_allow_html=True)
     with mc_col2:
         limitations_html = "".join([f"<li style='margin-bottom:6px;'>{item}</li>" for item in MODEL_CARD["known_limitations"]])
         st.markdown(f"""
-        <p style="color:{TEXT_MUTED}; font-size:11px; text-transform:uppercase; letter-spacing:0.6px; font-weight:800; margin-bottom:8px;">Known Limitations</p>
+        <p style="color:{TEXT_MUTED}; font-size:11px; text-transform:uppercase; letter-spacing:0.6px; font-weight:800; margin-bottom:8px;">Known limitations</p>
         <ul style="font-size:12px; color:{TEXT_MUTED}; line-height:1.6; margin:0; padding-left:16px;">{limitations_html}</ul>
-        <p style="color:{TEXT_MUTED}; font-size:11px; text-transform:uppercase; letter-spacing:0.6px; font-weight:800; margin:14px 0 6px 0;">Intended Use</p>
+        <p style="color:{TEXT_MUTED}; font-size:11px; text-transform:uppercase; letter-spacing:0.6px; font-weight:800; margin:14px 0 6px 0;">Intended use</p>
         <p style="font-size:12px; color:{TEXT_MUTED}; line-height:1.6; margin:0;">{MODEL_CARD['intended_use']}</p>
         """, unsafe_allow_html=True)
 
 st.markdown(f"""
 <div style="text-align:center; padding: 22px 0 6px 0; color:{TEXT_FAINT}; font-size:11px; letter-spacing:0.3px;">
-    RetiScan Pro v5 &nbsp;·&nbsp; Dual DR & HR screening triage decision-support engine &nbsp;·&nbsp; Session: {datetime.now(pytz.timezone('Asia/Kolkata')).strftime('%d %b %Y, %H:%M IST')}
+    RetiScan Pro v5 — DR grading (primary, validated) with an experimental HR screening supplement — Session: {datetime.now(pytz.timezone('Asia/Kolkata')).strftime('%d %b %Y, %H:%M IST')}
 </div>
 """, unsafe_allow_html=True)
