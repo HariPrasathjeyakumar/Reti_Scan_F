@@ -32,7 +32,7 @@ for _gpu in _gpus:
 
 # Set page configurations — wide canvas, no sidebar
 st.set_page_config(
-    page_title="RetiScan Pro",
+    page_title="RetiScan Procgvkjh,b",
     page_icon=None,
     layout="wide",
     initial_sidebar_state="collapsed"
