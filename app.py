@@ -41,22 +41,42 @@ st.set_page_config(
 # =====================================================================
 #  0. DESIGN TOKENS — clean, minimal, professional, icon-free
 # =====================================================================
-BG           = "#ffffff"
-SURFACE      = "#ffffff"
-SURFACE_ALT  = "#f6f6f7"
-RAISED       = "#f0f0f2"
-BORDER       = "#e1e1e4"
-TEXT_MAIN    = "#111114"
-TEXT_MUTED   = "#68686d"
-TEXT_FAINT   = "#98989d"
-ACCENT       = "#2c5254"
+# Structural surface/text/border tokens resolve through CSS variables so the
+# UI adapts automatically to the device/browser's light or dark preference
+# (see the :root / prefers-color-scheme block below). These are used only in
+# HTML/inline-style contexts — never passed to matplotlib, which cannot
+# resolve CSS custom properties (see CHART_* constants further down).
+BG           = "var(--rs-bg)"
+SURFACE      = "var(--rs-surface)"
+SURFACE_ALT  = "var(--rs-surface-alt)"
+RAISED       = "var(--rs-raised)"
+BORDER       = "var(--rs-border)"
+TEXT_MAIN    = "var(--rs-text-main)"
+TEXT_MUTED   = "var(--rs-text-muted)"
+TEXT_FAINT   = "var(--rs-text-faint)"
+
+# Semantic accent colors stay as concrete hex — they carry clinical meaning
+# (severity, referral status) and are also used with the "+alpha-suffix"
+# shorthand (e.g. f"{color}18") for tinted backgrounds, which only works
+# with literal hex, not CSS variables. Chosen to hold sufficient contrast
+# on both light and dark surfaces.
+ACCENT       = "#2c8a8d"
 ACCENT_DEEP  = "#1c3839"
-EMERALD      = "#2c7a54"
-INFO         = "#37628f"
-WARN         = "#93641c"
-DANGER       = "#9c3b3b"
-SUCCESS      = "#2c7a54"
-NEUTRAL_TAG  = "#5b5b60"
+EMERALD      = "#2f9e6b"
+INFO         = "#4d8fc9"
+WARN         = "#c98a2e"
+DANGER       = "#d1594f"
+SUCCESS      = "#2f9e6b"
+NEUTRAL_TAG  = "#8a8f96"
+
+# Fixed hex tokens reserved exclusively for the matplotlib trend chart,
+# which renders to a static PNG and cannot respond to CSS variables or the
+# device theme. Kept as a light, neutral card so the exported/embedded
+# chart stays legible regardless of the surrounding app theme.
+CHART_BG         = "#ffffff"
+CHART_SURFACE    = "#ffffff"
+CHART_BORDER     = "#dfe1e4"
+CHART_TEXT_MUTED = "#6b7076"
 
 SEVERITY_COLOR = {
     "No DR":            EMERALD,
@@ -76,6 +96,30 @@ HR_SEVERITY_COLOR = {
 
 st.markdown(f"""
     <style>
+    /* ============ Theme variables — light default, dark via device/browser preference ============ */
+    :root {{
+        --rs-bg: #ffffff;
+        --rs-surface: #ffffff;
+        --rs-surface-alt: #f6f6f7;
+        --rs-raised: #f0f0f2;
+        --rs-border: #e1e1e4;
+        --rs-text-main: #14161a;
+        --rs-text-muted: #63676d;
+        --rs-text-faint: #97999e;
+    }}
+    @media (prefers-color-scheme: dark) {{
+        :root {{
+            --rs-bg: #121317;
+            --rs-surface: #1a1c21;
+            --rs-surface-alt: #1f2227;
+            --rs-raised: #26292f;
+            --rs-border: #33363c;
+            --rs-text-main: #f1f2f4;
+            --rs-text-muted: #a7abb2;
+            --rs-text-faint: #7b7f86;
+        }}
+    }}
+
     /* ============ Canvas ============ */
     html, body, .main, [data-testid="stAppViewContainer"], [data-testid="stApp"] {{
         background-color: {BG} !important;
@@ -212,14 +256,16 @@ st.markdown(f"""
 
     /* ============ Cards ============ */
     .rs-card {{
-        border: 1px solid {BORDER}; border-radius: 6px; padding: 26px 28px; margin-bottom: 8px;
+        border: 1px solid {BORDER}; border-radius: 8px; padding: 26px 28px; margin-bottom: 8px;
+        background: {SURFACE};
     }}
     .rs-verdict-hero {{
-        border: 1px solid {BORDER}; border-radius: 6px; padding: 26px 28px; margin-bottom: 4px;
+        border: 1px solid {BORDER}; border-radius: 8px; padding: 26px 28px; margin-bottom: 4px;
+        background: {SURFACE};
     }}
     .rs-pill {{
         display: inline-block; font-size: 11px; font-weight: 700;
-        padding: 5px 11px; border-radius: 3px; border: 1px solid; margin-right: 8px;
+        padding: 5px 11px; border-radius: 4px; border: 1px solid; margin-right: 8px;
         text-transform: uppercase; letter-spacing: 0.4px;
     }}
     .rs-exp-tag {{
@@ -1585,25 +1631,30 @@ with hist_col:
     st.markdown(chips_html, unsafe_allow_html=True)
 
 with chart_col:
+    # Note: this figure is rendered to a static PNG by matplotlib, which
+    # cannot resolve CSS variables — it always uses the fixed CHART_*
+    # tokens (a light, neutral card) rather than the theme-adaptive BG/
+    # SURFACE/BORDER/TEXT_MUTED above, so the chart stays legible no
+    # matter which device theme the surrounding app is rendered in.
     fig, ax = plt.subplots(figsize=(4.6, 2.8))
     ax.plot(x_indices, attention_indices, marker='o', color=ACCENT, linewidth=2.5, label='DR attention')
     if len(record_logs) >= MIN_VISITS_FOR_TREND:
         forecast_x = [x_indices[-1], next_x]
         forecast_y = [attention_indices[-1], next_y_pred]
         ax.plot(forecast_x, forecast_y, linestyle='--', color=DANGER, linewidth=2, marker='x', label='DR forecast')
-        ax.legend(facecolor=SURFACE, edgecolor=BORDER, labelcolor=TEXT_MUTED, fontsize=7)
+        ax.legend(facecolor=CHART_SURFACE, edgecolor=CHART_BORDER, labelcolor=CHART_TEXT_MUTED, fontsize=7)
     ax.set_xticks(range(len(record_logs) + (1 if len(record_logs) >= MIN_VISITS_FOR_TREND else 0)))
     extended_stamps = visit_stamps + ["(Next)"] if len(record_logs) >= MIN_VISITS_FOR_TREND else visit_stamps
     ax.set_xticklabels(extended_stamps, rotation=25, ha='right', fontsize=8)
     ax.set_ylim(-5, 105)
-    ax.grid(True, linestyle='--', alpha=0.15, color=TEXT_MUTED)
-    fig.patch.set_facecolor(BG)
-    ax.set_facecolor(SURFACE)
-    ax.spines['bottom'].set_color(BORDER)
-    ax.spines['left'].set_color(BORDER)
+    ax.grid(True, linestyle='--', alpha=0.15, color=CHART_TEXT_MUTED)
+    fig.patch.set_facecolor(CHART_BG)
+    ax.set_facecolor(CHART_SURFACE)
+    ax.spines['bottom'].set_color(CHART_BORDER)
+    ax.spines['left'].set_color(CHART_BORDER)
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
-    ax.tick_params(colors=TEXT_MUTED, labelsize=8)
+    ax.tick_params(colors=CHART_TEXT_MUTED, labelsize=8)
     st.pyplot(fig)
     plt.close(fig)
 
