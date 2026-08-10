@@ -32,38 +32,37 @@ for _gpu in _gpus:
 
 # Set page configurations — wide canvas, no sidebar
 st.set_page_config(
-    page_title="RetiScan Pro",
+    page_title="RetiScan Pro v5",
     page_icon=None,
     layout="wide",
     initial_sidebar_state="collapsed"
 )
 
 # =====================================================================
-#  0. DESIGN TOKENS — Modern Dark Mode (Sleek, Premium, Clean)
+#  0. DESIGN TOKENS — clean, minimal, professional, icon-free
 # =====================================================================
-BG           = "#0b0f19"        # Deep rich dark navy background
-SURFACE      = "#111827"        # Dark slate surface card background
-SURFACE_ALT  = "#1f2937"        # Elevated secondary surface
-RAISED       = "#374151"        # Subtle hover/raised state
-BORDER       = "#1f2937"        # Subtle dark border
-BORDER_LIGHT = "#374151"        # Slightly lighter border for cards
-TEXT_MAIN    = "#f9fafb"        # Crisp white text
-TEXT_MUTED   = "#b6becc"        # Muted silver gray text
-TEXT_FAINT   = "#6b7280"        # Faint text
-ACCENT       = "#2e8ac7"        # Cyan/Sky blue primary accent
-ACCENT_DEEP  = "#0284c7"        # Deep ocean cyan
-EMERALD      = "#10b981"        # Clean emerald green
-INFO         = "#6366f1"        # Soft indigo accent
-WARN         = "#f59e0b"        # Soft amber
-DANGER       = "#ef4444"        # Modern rose red
-SUCCESS      = "#10b981"        # Clean emerald green
-NEUTRAL_TAG  = "#4b5563"
+BG           = "#ffffff"
+SURFACE      = "#ffffff"
+SURFACE_ALT  = "#f6f6f7"
+RAISED       = "#f0f0f2"
+BORDER       = "#e1e1e4"
+TEXT_MAIN    = "#111114"
+TEXT_MUTED   = "#68686d"
+TEXT_FAINT   = "#98989d"
+ACCENT       = "#2c5254"
+ACCENT_DEEP  = "#1c3839"
+EMERALD      = "#2c7a54"
+INFO         = "#37628f"
+WARN         = "#93641c"
+DANGER       = "#9c3b3b"
+SUCCESS      = "#2c7a54"
+NEUTRAL_TAG  = "#5b5b60"
 
 SEVERITY_COLOR = {
     "No DR":            EMERALD,
     "Mild NPDR":         WARN,
     "Moderate NPDR":     INFO,
-    "Severe NPDR":       "#f97316",
+    "Severe NPDR":       "#a15a26",
     "Proliferative DR":  DANGER,
 }
 
@@ -81,233 +80,202 @@ st.markdown(f"""
     html, body, .main, [data-testid="stAppViewContainer"], [data-testid="stApp"] {{
         background-color: {BG} !important;
         color: {TEXT_MAIN};
-        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+        font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
     }}
     [data-testid="stHeader"] {{ background-color: transparent !important; }}
     [data-testid="stSidebar"] {{ display: none !important; }}
-    .block-container {{ padding-top: 2rem; padding-bottom: 4rem; max-width: 1120px; }}
+    .block-container {{ padding-top: 2.2rem; padding-bottom: 4rem; max-width: 1080px; }}
 
     /* ============ Inputs ============ */
     .stTextInput input {{
-        background-color: {SURFACE_ALT} !important;
-        border: 1px solid {BORDER_LIGHT} !important;
-        border-radius: 8px !important;
+        background-color: {SURFACE} !important;
+        border: 1px solid {BORDER} !important;
+        border-radius: 4px !important;
         color: {TEXT_MAIN} !important;
         font-weight: 500 !important;
-        padding: 10px 14px !important;
     }}
     .stTextInput input:focus {{
         border-color: {ACCENT} !important;
-        box-shadow: 0 0 0 2px {ACCENT}33 !important;
+        box-shadow: none !important;
     }}
     label {{ color: {TEXT_MUTED} !important; font-size: 11px !important; font-weight: 600 !important;
-             text-transform: uppercase; letter-spacing: 0.6px; }}
+             text-transform: uppercase; letter-spacing: 0.5px; }}
 
     /* ============ Uploader ============ */
     [data-testid="stFileUploaderDropzone"] {{
         background-color: {SURFACE_ALT} !important;
-        border: 1px dashed {BORDER_LIGHT} !important;
-        border-radius: 8px !important;
-        transition: all 0.2s ease;
-    }}
-    [data-testid="stFileUploaderDropzone"]:hover {{
-        border-color: {ACCENT} !important;
+        border: 1px dashed {BORDER} !important;
+        border-radius: 4px !important;
     }}
     [data-testid="stFileUploaderDropzone"] * {{ color: {TEXT_MUTED} !important; }}
     [data-testid="stFileUploaderDropzone"] button,
     section[data-testid="stFileUploader"] button {{
-        background-color: {ACCENT} !important;
-        color: {BG} !important;
+        background-color: {TEXT_MAIN} !important;
+        color: {SURFACE} !important;
         border: none !important;
-        border-radius: 6px !important;
+        border-radius: 4px !important;
         font-weight: 600 !important;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.2) !important;
+        box-shadow: none !important;
     }}
     [data-testid="stFileUploaderFile"] {{
-        background-color: {SURFACE} !important;
-        border-radius: 6px !important;
-        border: 1px solid {BORDER_LIGHT} !important;
+        background-color: {RAISED} !important;
+        border-radius: 4px !important;
+        border: 1px solid {BORDER} !important;
     }}
 
     /* ============ Buttons ============ */
     .stButton button, .stDownloadButton button {{
-        background: linear-gradient(135deg, {ACCENT}, {ACCENT_DEEP}) !important;
-        color: #ffffff !important;
+        background-color: {TEXT_MAIN} !important;
+        color: {SURFACE} !important;
         border: none !important;
-        border-radius: 8px !important;
+        border-radius: 4px !important;
         font-weight: 600 !important;
-        padding: 12px 20px !important;
-        box-shadow: 0 4px 12px {ACCENT}33 !important;
-        transition: all 0.2s ease;
+        padding: 10px 16px !important;
+        box-shadow: none !important;
+        transition: opacity 0.12s ease;
     }}
     .stButton button:hover, .stDownloadButton button:hover {{
-        opacity: 0.92;
-        transform: translateY(-1px);
-        box-shadow: 0 6px 16px {ACCENT}4d !important;
+        opacity: 0.82;
     }}
-    .stDownloadButton button p {{ color: #ffffff !important; font-weight: 600 !important; }}
+    .stDownloadButton button p {{ color: {SURFACE} !important; font-weight: 600 !important; }}
 
     /* Outline button variant — used for the experimental HR trigger */
     .rs-btn-outline .stButton button {{
-        background: transparent !important;
+        background-color: {SURFACE} !important;
         color: {TEXT_MAIN} !important;
-        border: 1px solid {BORDER_LIGHT} !important;
-        box-shadow: none !important;
+        border: 1px solid {TEXT_MAIN} !important;
     }}
-    .rs-btn-outline .stButton button:hover {{
-        background-color: {SURFACE_ALT} !important;
-        border-color: {ACCENT} !important;
-        color: {ACCENT} !important;
-    }}
+    .rs-btn-outline .stButton button:hover {{ opacity: 1; background-color: {SURFACE_ALT} !important; }}
 
     /* ============ Radio Segmented Control ============ */
     div[role="radiogroup"] {{
-        display: flex; gap: 6px; background: {SURFACE_ALT};
-        padding: 5px; border-radius: 8px; border: 1px solid {BORDER_LIGHT};
+        display: flex; gap: 4px; background: {SURFACE_ALT};
+        padding: 4px; border-radius: 4px; border: 1px solid {BORDER};
         width: fit-content;
     }}
     div[role="radiogroup"] label {{
-        background: transparent; border-radius: 6px; padding: 7px 16px !important;
+        background: transparent; border-radius: 3px; padding: 7px 14px !important;
         margin: 0 !important; color: {TEXT_MUTED} !important; font-weight: 600 !important;
         text-transform: none !important; letter-spacing: 0 !important; font-size: 12.5px !important;
-        cursor: pointer; transition: all 0.15s ease;
+        cursor: pointer;
     }}
     div[role="radiogroup"] label[data-checked="true"],
-    div[role="radiogroup"] input:checked + div {{
-        background-color: {SURFACE} !important;
-        color: {ACCENT} !important;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.3);
-    }}
+    div[role="radiogroup"] input:checked + div {{ color: {TEXT_MAIN} !important; }}
     div[role="radiogroup"] > label > div:first-child {{ display: none; }}
 
     /* ============ Expander ============ */
     .stExpander {{
         background-color: {SURFACE} !important;
-        border: 1px solid {BORDER_LIGHT} !important;
-        border-radius: 8px;
+        border: 1px solid {BORDER} !important;
+        border-radius: 4px;
     }}
     .stExpander summary {{ color: {TEXT_MAIN} !important; font-weight: 600 !important; }}
 
     /* ============ Misc ============ */
-    hr {{ border-color: {BORDER_LIGHT} !important; }}
+    hr {{ border-color: {BORDER} !important; }}
     ::-webkit-scrollbar {{ width: 8px; height: 8px; }}
-    ::-webkit-scrollbar-thumb {{ background-color: {SURFACE_ALT}; border-radius: 4px; }}
+    ::-webkit-scrollbar-thumb {{ background-color: {BORDER}; border-radius: 4px; }}
 
     /* ============ Layout: header ============ */
     .rs-hero {{
-        display: flex; align-items: center; justify-content: space-between;
-        padding: 16px 24px; border: 1px solid {BORDER_LIGHT}; border-radius: 12px;
-        background: linear-gradient(135deg, {SURFACE}, {SURFACE_ALT});
-        margin-bottom: 28px; box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+        display: flex; align-items: baseline; justify-content: space-between;
+        padding: 0 0 22px 0; border-bottom: 1px solid {BORDER}; margin-bottom: 28px;
     }}
-    .rs-hero-title {{ font-size: 32px; font-weight: 800; letter-spacing: -0.5px; color: {TEXT_MAIN}; }}
-    .rs-hero-sub {{ color: {TEXT_MUTED}; font-size: 13px; margin-top: 4px; }}
+    .rs-hero-title {{ font-size: 24px; font-weight: 800; letter-spacing: -0.3px; color: {TEXT_MAIN}; }}
+    .rs-hero-sub {{ color: {TEXT_MUTED}; font-size: 12.5px; margin-top: 5px; }}
     .rs-hero-tag {{
-        font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px;
-        color: {ACCENT}; background: {ACCENT}1a; border: 1px solid {ACCENT}40;
-        border-radius: 20px; padding: 6px 14px;
+        font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px;
+        color: {TEXT_MUTED}; border: 1px solid {BORDER}; border-radius: 3px; padding: 5px 10px;
     }}
 
     /* ============ Layout: toolbar ============ */
     .rs-toolbar {{
-        background: {SURFACE}; border: 1px solid {BORDER_LIGHT}; border-radius: 12px;
-        padding: 22px 26px; margin-bottom: 32px; box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+        background: {SURFACE_ALT}; border: 1px solid {BORDER}; border-radius: 6px;
+        padding: 20px 22px; margin-bottom: 32px;
     }}
     .rs-toolbar-label {{
         color: {TEXT_FAINT}; font-size: 10.5px; text-transform: uppercase;
-        letter-spacing: 0.8px; font-weight: 700; margin-bottom: 8px;
+        letter-spacing: 0.6px; font-weight: 700; margin-bottom: 8px;
     }}
 
     /* ============ Section dividers ============ */
     .rs-section-label {{
-        color: {TEXT_MAIN}; font-size: 13px; text-transform: uppercase;
-        letter-spacing: 1.2px; font-weight: 700; margin: 40px 0 18px 0;
-        padding-bottom: 10px; border-bottom: 1px solid {BORDER_LIGHT};
+        color: {TEXT_MAIN}; font-size: 12px; text-transform: uppercase;
+        letter-spacing: 1px; font-weight: 700; margin: 40px 0 18px 0;
+        padding-bottom: 10px; border-bottom: 1px solid {BORDER};
         display: flex; align-items: center; justify-content: space-between;
     }}
     .rs-section-note {{
-        color: {TEXT_FAINT}; font-size: 11px; text-transform: none; font-weight: 500;
+        color: {TEXT_FAINT}; font-size: 10.5px; text-transform: none; font-weight: 600;
         letter-spacing: 0.2px;
     }}
 
     /* ============ Cards ============ */
     .rs-card {{
-        background-color: {SURFACE}; border: 1px solid {BORDER_LIGHT};
-        border-radius: 12px; padding: 26px 28px; margin-bottom: 8px;
+        border: 1px solid {BORDER}; border-radius: 6px; padding: 26px 28px; margin-bottom: 8px;
     }}
     .rs-verdict-hero {{
-        border-radius: 12px; padding: 28px 30px; margin-bottom: 4px;
-        border: 1px solid {BORDER_LIGHT}; backdrop-filter: blur(10px);
-        box-shadow: 0 8px 24px rgba(0,0,0,0.25);
+        border: 1px solid {BORDER}; border-radius: 6px; padding: 26px 28px; margin-bottom: 4px;
     }}
     .rs-pill {{
         display: inline-block; font-size: 11px; font-weight: 700;
-        padding: 6px 14px; border-radius: 20px; border: 1px solid; margin-right: 8px;
-        text-transform: uppercase; letter-spacing: 0.5px;
+        padding: 5px 11px; border-radius: 3px; border: 1px solid; margin-right: 8px;
+        text-transform: uppercase; letter-spacing: 0.4px;
     }}
     .rs-exp-tag {{
         display: inline-block; font-size: 10px; font-weight: 700; text-transform: uppercase;
-        letter-spacing: 0.8px; color: {WARN}; border: 1px solid {WARN}40; border-radius: 20px;
-        padding: 4px 10px; background: {WARN}1a;
+        letter-spacing: 0.6px; color: {WARN}; border: 1px solid {WARN}; border-radius: 3px;
+        padding: 3px 8px; background: {WARN}0f;
     }}
-    .rs-stat-strip {{ display: flex; gap: 32px; flex-wrap: wrap; margin-top: 22px; }}
+    .rs-stat-strip {{ display: flex; gap: 32px; flex-wrap: wrap; margin-top: 20px; }}
     .rs-stat {{ display: flex; flex-direction: column; }}
-    .rs-stat-label {{ color: {TEXT_MUTED}; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.6px; font-weight: 600; }}
-    .rs-stat-value {{ font-size: 20px; font-weight: 800; margin-top: 4px; color: {TEXT_MAIN}; }}
+    .rs-stat-label {{ color: {TEXT_MUTED}; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; }}
+    .rs-stat-value {{ font-size: 18px; font-weight: 700; margin-top: 3px; color: {TEXT_MAIN}; }}
 
-    .rs-rail {{
-        background: {SURFACE}; border-radius: 10px; padding: 18px 20px;
-        border: 1px solid {BORDER_LIGHT}; border-left: 4px solid {BORDER_LIGHT}; margin-bottom: 16px;
-    }}
-    .rs-rail-accent {{
-        background: {SURFACE}; border-radius: 10px; padding: 18px 20px;
-        border: 1px solid {BORDER_LIGHT}; border-left: 4px solid {ACCENT}; margin-bottom: 16px;
-    }}
-    .rs-rail-warn {{
-        background: {SURFACE}; border-radius: 10px; padding: 18px 20px;
-        border: 1px solid {BORDER_LIGHT}; border-left: 4px solid {WARN}; margin-bottom: 16px;
-    }}
-    .rs-rail-title {{ font-size: 11px; text-transform: uppercase; letter-spacing: 0.8px; font-weight: 700; margin-bottom: 8px; color: {TEXT_MUTED}; }}
-    .rs-rail-body {{ font-size: 13.5px; line-height: 1.6; color: {TEXT_MAIN}; }}
+    .rs-rail {{ border-left: 2px solid {BORDER}; padding-left: 16px; margin-bottom: 20px; }}
+    .rs-rail-accent {{ border-left: 2px solid {TEXT_MAIN}; padding-left: 16px; margin-bottom: 20px; }}
+    .rs-rail-warn {{ border-left: 2px solid {WARN}; padding-left: 16px; margin-bottom: 20px; }}
+    .rs-rail-title {{ font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.6px; font-weight: 700; margin-bottom: 7px; color: {TEXT_MUTED}; }}
+    .rs-rail-body {{ font-size: 13px; line-height: 1.6; color: {TEXT_MAIN}; }}
 
-    .rs-prob-row {{ display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 5px; }}
+    .rs-prob-row {{ display: flex; justify-content: space-between; font-size: 12.5px; margin-bottom: 4px; }}
 
     .rs-bar-track {{
-        width: 100%; height: 6px; border-radius: 4px;
+        width: 100%; height: 5px; border-radius: 3px;
         background: {SURFACE_ALT}; border: 1px solid {BORDER};
-        overflow: hidden; margin-bottom: 14px;
+        overflow: hidden; margin-bottom: 13px;
     }}
-    .rs-bar-fill {{ height: 100%; background: linear-gradient(90deg, {ACCENT}, {ACCENT_DEEP}); border-radius: 4px; }}
-    .rs-bar-fill-muted {{ height: 100%; background: {TEXT_FAINT}; border-radius: 4px; }}
+    .rs-bar-fill {{ height: 100%; background: {TEXT_MAIN}; }}
+    .rs-bar-fill-muted {{ height: 100%; background: {TEXT_FAINT}; }}
 
     .rs-reject {{
-        background: {SURFACE}; border-left: 4px solid {DANGER}; border-radius: 10px;
-        padding: 20px 24px; color: {TEXT_MAIN}; border-top: 1px solid {BORDER_LIGHT};
-        border-right: 1px solid {BORDER_LIGHT}; border-bottom: 1px solid {BORDER_LIGHT};
+        background: {SURFACE}; border-left: 2px solid {DANGER}; border-radius: 6px;
+        padding: 18px 20px; color: {TEXT_MAIN}; border-top: 1px solid {BORDER};
+        border-right: 1px solid {BORDER}; border-bottom: 1px solid {BORDER};
     }}
 
     .rs-warn-box {{
-        background: {SURFACE}; border-left: 4px solid {WARN}; border-radius: 10px;
-        padding: 20px 24px; color: {TEXT_MAIN}; border-top: 1px solid {BORDER_LIGHT};
-        border-right: 1px solid {BORDER_LIGHT}; border-bottom: 1px solid {BORDER_LIGHT};
+        background: {SURFACE}; border-left: 2px solid {WARN}; border-radius: 6px;
+        padding: 16px 20px; color: {TEXT_MAIN}; border-top: 1px solid {BORDER};
+        border-right: 1px solid {BORDER}; border-bottom: 1px solid {BORDER};
     }}
 
     .rs-idle-box {{
-        background: {SURFACE}; border: 1px dashed {BORDER_LIGHT}; border-radius: 10px;
-        padding: 32px 28px; text-align: center; color: {TEXT_MUTED}; font-size: 13.5px; line-height: 1.6;
+        border: 1px dashed {BORDER}; border-radius: 6px; padding: 30px 24px;
+        text-align: center; color: {TEXT_MUTED};
     }}
 
     .rs-timeline-chip {{
-        background: {SURFACE}; border-radius: 10px; border: 1px solid {BORDER_LIGHT};
-        padding: 14px 18px; margin-bottom: 10px; display: flex; flex-direction: column; gap: 4px;
+        display: flex; flex-direction: column; gap: 2px;
+        padding: 12px 0; border-bottom: 1px solid {BORDER}; font-size: 12.5px;
     }}
 
     .rs-empty {{
-        text-align: center; padding: 80px 20px; color: {TEXT_MUTED};
-        background: {SURFACE}; border: 1px dashed {BORDER_LIGHT}; border-radius: 12px;
+        text-align:center; padding:70px 20px; color:{TEXT_MUTED};
+        border: 1px dashed {BORDER}; border-radius: 6px;
     }}
-    .rs-empty-title {{ color: {TEXT_MAIN}; font-size: 16px; font-weight: 700; margin-bottom: 6px; }}
-    .rs-empty-sub {{ font-size: 13px; color: {TEXT_MUTED}; }}
+    .rs-empty-title {{ color:{TEXT_MAIN}; font-size:15px; font-weight:700; margin-bottom:6px; }}
+    .rs-empty-sub {{ font-size:12.5px; }}
     </style>
 """, unsafe_allow_html=True)
 
@@ -1190,7 +1158,7 @@ def compute_diagnostic_graphs(img_tensor, grad_model_obj, pred_idx, img_bgr, x_c
 st.markdown(f"""
 <div class="rs-hero">
     <div>
-        <div class="rs-hero-title">RETISCAN<span style="color:{ACCENT};"></span></div>
+        <div class="rs-hero-title">RetiScan Pro <span style="color:{ACCENT};">v5</span></div>
         <div class="rs-hero-sub">AI-assisted diabetic retinopathy grading, with an experimental hypertensive retinopathy screen</div>
     </div>
     <div class="rs-hero-tag">Decision-support tool</div>
@@ -1346,18 +1314,18 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 st.markdown(f"""
-<div class="rs-verdict-hero" style="background: linear-gradient(135deg, {SURFACE}, {SURFACE_ALT}); border-left: 4px solid {accent_color};">
+<div class="rs-verdict-hero" style="background: linear-gradient(120deg, {accent_color}18, {SURFACE} 55%);">
     <div style="color:{TEXT_MUTED}; font-size:11px; text-transform:uppercase; letter-spacing:1px; font-weight:800;">Diabetic diagnostic verdict</div>
     <div style="font-size:42px; font-weight:800; color:{accent_color}; margin:6px 0 12px 0; letter-spacing:-0.5px;">{pred_name}</div>
     <div>
-        <span class="rs-pill" style="border-color:{referral_color}40; color:{referral_color}; background:{referral_color}1a;">{referral_label}</span>
-        <span class="rs-pill" style="border-color:{BORDER_LIGHT}; color:{TEXT_MUTED}; background:{SURFACE_ALT};">{consensus_status}</span>
+        <span class="rs-pill" style="border-color:{referral_color}; color:{referral_color}; background:{referral_color}14;">{referral_label}</span>
+        <span class="rs-pill" style="border-color:{BORDER}; color:{TEXT_MUTED};">{consensus_status}</span>
     </div>
     <div class="rs-stat-strip">
         <div class="rs-stat"><div class="rs-stat-label">DR confidence</div><div class="rs-stat-value">{confidence:.1f}%</div></div>
         <div class="rs-stat"><div class="rs-stat-label">Attention intensity</div><div class="rs-stat-value">{attention_index:.1f}%</div></div>
         <div class="rs-stat"><div class="rs-stat-label">Referable probability</div><div class="rs-stat-value" style="color:{referral_color};">{referable_prob:.1f}%</div></div>
-        <div class="rs-stat"><div class="rs-stat-label">Dominant quadrant</div><div class="rs-stat-value" style="font-size:16px;">{dominant_quad}</div></div>
+        <div class="rs-stat"><div class="rs-stat-label">Dominant quadrant</div><div class="rs-stat-value" style="font-size:15px;">{dominant_quad}</div></div>
     </div>
 </div>
 <p style="color:{TEXT_MAIN}; font-size:13.5px; line-height:1.65; margin: 14px 4px 0 4px;">{CLASS_DESCRIPTIONS[pred_idx]}</p>
@@ -1531,17 +1499,17 @@ if hr_already_run and hr_results is not None:
 
         with hr_col1:
             st.markdown(f"""
-            <div class="rs-verdict-hero" style="background: linear-gradient(135deg, {SURFACE}, {SURFACE_ALT}); border-left: 4px solid {hr_color}; padding: 24px 28px;">
+            <div class="rs-verdict-hero" style="background: linear-gradient(120deg, {hr_color}18, {SURFACE} 55%); border: 1px solid {BORDER}; padding: 24px 28px;">
                 <div style="display:flex; align-items:center; gap:10px;">
                     <div style="color:{TEXT_MUTED}; font-size:11px; text-transform:uppercase; letter-spacing:1px; font-weight:800;">Hypertensive diagnostic verdict</div>
                     <span class="rs-exp-tag">Experimental</span>
                 </div>
                 <div style="font-size:36px; font-weight:800; color:{hr_color}; margin:6px 0 10px 0; letter-spacing:-0.5px;">{hr_results['pred_name']}</div>
                 <div>
-                    <span class="rs-pill" style="border-color:{hr_ref_color}40; color:{hr_ref_color}; background:{hr_ref_color}1a;">
+                    <span class="rs-pill" style="border-color:{hr_ref_color}; color:{hr_ref_color}; background:{hr_ref_color}14;">
                         {"CARDIO-VASCULAR ALERT" if hr_is_severe else "SYSTEMICALLY STABLE"}
                     </span>
-                    <span class="rs-pill" style="border-color:{BORDER_LIGHT}; color:{TEXT_MUTED}; background:{SURFACE_ALT};">KWB SCALE (GRADES 0-4)</span>
+                    <span class="rs-pill" style="border-color:{BORDER}; color:{TEXT_MUTED};">KWB SCALE (GRADES 0-4)</span>
                 </div>
                 <div class="rs-stat-strip">
                     <div class="rs-stat"><div class="rs-stat-label">AVR</div><div class="rs-stat-value">{hr_results['avr']}</div></div>
@@ -1608,10 +1576,10 @@ with hist_col:
         hr_diag = r.get("hr_diagnosis", "Not run")
         chips_html += f"""
         <div class="rs-timeline-chip">
-            <span style="color:{TEXT_FAINT}; font-size:10.5px; text-transform:uppercase; font-weight:700;">Visit #{i+1} — {r['timestamp']}</span>
+            <span style="color:{TEXT_FAINT}; font-size:10px; text-transform:uppercase; font-weight:700;">Visit #{i+1} — {r['timestamp']}</span>
             <span style="color:{sev_color}; font-size:13.5px; font-weight:800;">DR: {r['diagnosis']}</span>
             <span style="color:{INFO}; font-size:11.5px; font-weight:700;">HR (experimental): {hr_diag}</span>
-            <span style="color:{TEXT_MUTED}; font-size:11px;">Confidence {r['confidence']}% — Attention {r['attention_index']:.1f}%</span>
+            <span style="color:{TEXT_MUTED}; font-size:10.5px;">Confidence {r['confidence']}% — Attention {r['attention_index']:.1f}%</span>
         </div>
         """
     st.markdown(chips_html, unsafe_allow_html=True)
@@ -1623,7 +1591,7 @@ with chart_col:
         forecast_x = [x_indices[-1], next_x]
         forecast_y = [attention_indices[-1], next_y_pred]
         ax.plot(forecast_x, forecast_y, linestyle='--', color=DANGER, linewidth=2, marker='x', label='DR forecast')
-        ax.legend(facecolor=SURFACE, edgecolor=BORDER_LIGHT, labelcolor=TEXT_MUTED, fontsize=7)
+        ax.legend(facecolor=SURFACE, edgecolor=BORDER, labelcolor=TEXT_MUTED, fontsize=7)
     ax.set_xticks(range(len(record_logs) + (1 if len(record_logs) >= MIN_VISITS_FOR_TREND else 0)))
     extended_stamps = visit_stamps + ["(Next)"] if len(record_logs) >= MIN_VISITS_FOR_TREND else visit_stamps
     ax.set_xticklabels(extended_stamps, rotation=25, ha='right', fontsize=8)
@@ -1631,8 +1599,8 @@ with chart_col:
     ax.grid(True, linestyle='--', alpha=0.15, color=TEXT_MUTED)
     fig.patch.set_facecolor(BG)
     ax.set_facecolor(SURFACE)
-    ax.spines['bottom'].set_color(BORDER_LIGHT)
-    ax.spines['left'].set_color(BORDER_LIGHT)
+    ax.spines['bottom'].set_color(BORDER)
+    ax.spines['left'].set_color(BORDER)
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
     ax.tick_params(colors=TEXT_MUTED, labelsize=8)
