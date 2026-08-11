@@ -1204,7 +1204,7 @@ def compute_diagnostic_graphs(img_tensor, grad_model_obj, pred_idx, img_bgr, x_c
 st.markdown(f"""
 <div class="rs-hero">
     <div>
-        <div class="rs-hero-title">RETISCAN<span style="color:{ACCENT};"></span></div>
+        <div class="rs-hero-title"><span style="color:{ACCENT};">RETISCAN</span></div>
         <div class="rs-hero-sub">AI-assisted diabetic retinopathy grading, with an experimental hypertensive retinopathy screen</div>
     </div>
     <div class="rs-hero-tag">Decision-support tool</div>
