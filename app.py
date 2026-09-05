@@ -412,7 +412,6 @@ MODEL_CARD = {
         "Optic disc localization uses a brightness + circularity heuristic; extreme exudate/glare cases can still occasionally mislocalize the disc.",
         "HR inference reimplements RRWNet's published preprocessing.py enhancement algorithm (illumination background-subtraction), not an approximation — but exact numerical parity with the authors' PIL/skimage pipeline is not guaranteed.",
         "The AVR-to-KWB-grade cutoffs used here are literature-informed thresholds, not independently calibrated against a labeled KWB dataset by this project.",
-        "Patient history is stored in local SQLite on the deployment container's filesystem and will not persist across container restarts/redeploys — acceptable for this development stage, flagged as a known constraint rather than solved.",
         "DR predictions rely strictly on original EfficientNet preprocessing to maintain baseline accuracy.",
         "Not a standalone diagnostic tool. Intended as a dual-screening decision-support triage aid; the DR pipeline is the validated primary result, HR is a supplementary experimental signal."
     ],
