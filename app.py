@@ -1709,6 +1709,6 @@ with st.expander("Model card and audit trail", expanded=False):
 
 st.markdown(f"""
 <div style="text-align:center; padding: 22px 0 6px 0; color:{TEXT_FAINT}; font-size:11px; letter-spacing:0.3px;">
-    RetiScan Pro v5 — DR grading (primary, validated) with an experimental HR screening supplement — Session: {datetime.now(pytz.timezone('Asia/Kolkata')).strftime('%d %b %Y, %H:%M IST')}
+    RetiScan — DR grading (primary, validated) with an experimental HR screening supplement — Session: {datetime.now(pytz.timezone('Asia/Kolkata')).strftime('%d %b %Y, %H:%M IST')}
 </div>
 """, unsafe_allow_html=True)
