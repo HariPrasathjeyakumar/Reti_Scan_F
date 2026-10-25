@@ -1,8 +1,8 @@
-RetiScan Pro v5: Dual-Screening Retinal AI System
+RetiScan : Dual-Screening Retinal AI System
 
 📌 Overview
 
-RetiScan Pro is designed for primary care clinics, rural health centers, and mobile screening units. It combines two specialized deep learning models to perform dual-disease analysis on a single retinal photo, automatically filtering bad-quality images, measuring microvascular changes, and generating instant visual PDF diagnostic reports.
+RetiScan is designed for primary care clinics, rural health centers, and mobile screening units. It combines two specialized deep learning models to perform dual-disease analysis on a single retinal photo, automatically filtering bad-quality images, measuring microvascular changes, and generating instant visual PDF diagnostic reports.
 
 ✨ Key Features
 
@@ -43,7 +43,7 @@ Computer Vision: OpenCV, PIL, Scikit-Image
 
 Models: EfficientNetB3 (DR Classification), RRWNet (Vessel Segmentation)
 
-Database & Storage: SQLite, ReportLab (PDF Generation)
+Database & Storage: ReportLab (PDF Generation)
 
 Data & Analytics: NumPy, Pandas, Matplotlib
 
@@ -75,6 +75,3 @@ Interactive Dashboard View: Instant stage prediction, confidence scores, AVR rat
 
 Downloadable Clinical PDF: Single-page summary complete with patient history, risk flags, attention scores, and specialist review prompts.
 
-📜 License
-
-Distributed under the MIT License. See LICENSE for more information.
