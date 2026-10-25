@@ -47,25 +47,6 @@ Database & Storage: ReportLab (PDF Generation)
 
 Data & Analytics: NumPy, Pandas, Matplotlib
 
-🚀 Quick Start & Installation
-
-1. Clone the Repository
-
-git clone https://github.com/your-username/retiscan-pro.git
-cd retiscan-pro
-
-
-2. Create a Virtual Environment & Install Dependencies
-
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-pip install -r requirements.txt
-
-
-3. Run the Streamlit App
-
-streamlit run app.py
-
 
 📄 Output & Diagnostic Reports
 
