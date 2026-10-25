@@ -1,9 +1,5 @@
 RetiScan Pro v5: Dual-Screening Retinal AI System
 
-RetiScan Pro v5 is an offline-first AI screening platform that analyzes fundus images for simultaneous detection of Diabetic Retinopathy and Hypertensive Retinopathy.
-
-By combining deep learning classification with vessel segmentation and robust uncertainty estimation, it delivers fast, interpretable point-of-care diagnostics without requiring cloud connectivity.
-
 📌 Overview
 
 RetiScan Pro is designed for primary care clinics, rural health centers, and mobile screening units. It combines two specialized deep learning models to perform dual-disease analysis on a single retinal photo, automatically filtering bad-quality images, measuring microvascular changes, and generating instant visual PDF diagnostic reports.
